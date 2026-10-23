@@ -23,12 +23,14 @@ DEFAULTS = {
     "min_leg_probability": 0.68,
     "min_quality": 75,
     "min_edge": 0.0,
-    "min_total_probability": 0.22,
+    "min_total_probability": 0.28,
+    "display_min_probability": 0.55,
+    "max_visible_singles": 5,
     "football_data_token": "",  # Conservado para no romper configuraciones antiguas; ya no es necesario.
     "recent_games": 8,
     "theme": "dark",
     "check_updates": True,
-    "analysis_profile_version": 2,
+    "analysis_profile_version": 3,
     "competitions": [
         "Premier League", "LaLiga", "Serie A", "Bundesliga", "Ligue 1",
         "Champions League", "Europa League", "Carabao Cup", "Coppa Italia",
@@ -57,6 +59,13 @@ def load_config() -> dict:
                 if abs(float(loaded.get("min_edge", 0.02)) - 0.02) < 1e-9:
                     cfg["min_edge"] = 0.0
                 cfg["analysis_profile_version"] = 2
+            if int(loaded.get("analysis_profile_version", 1)) < 3:
+                # 0.6 reemplaza el corte universal por reglas específicas para
+                # cada familia de mercado y eleva la exigencia de la combinada.
+                cfg["min_total_probability"] = 0.28
+                cfg["display_min_probability"] = 0.55
+                cfg["max_visible_singles"] = 5
+                cfg["analysis_profile_version"] = 3
     except (OSError, ValueError):
         pass
     env_token = os.environ.get("FOOTBALL_DATA_TOKEN", "").strip()
