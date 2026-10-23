@@ -261,6 +261,10 @@ def evaluate_match(match: Match, context: MatchContext, config: dict) -> list[Ev
                 failures.append("precio_desfavorable")
             if rule.confirmed_lineup and not context.lineup_confirmed:
                 failures.append("alineacion_no_confirmada")
+            if rule.injuries_required and not context.injuries_checked:
+                failures.append("bajas_no_verificadas")
+            if context.source_count >= 2 and context.source_agreement < .60:
+                failures.append("fuentes_en_conflicto")
             if context.rotation_risk == "high" and family in {"match_winner", "player_shots"}:
                 failures.append("rotacion_alta")
 
@@ -282,6 +286,8 @@ def evaluate_match(match: Match, context: MatchContext, config: dict) -> list[Ev
                 "cuota_demasiado_alta": "cuota fuera del perfil conservador",
                 "precio_desfavorable": "precio claramente desfavorable",
                 "alineacion_no_confirmada": "titularidad no confirmada",
+                "bajas_no_verificadas": "bajas y sanciones sin verificar",
+                "fuentes_en_conflicto": "las fuentes deportivas discrepan demasiado",
                 "rotacion_alta": "riesgo alto de rotación",
             }
             decision = "No cumple: " + ", ".join(labels[x] for x in failures) + "."
