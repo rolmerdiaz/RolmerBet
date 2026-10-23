@@ -82,7 +82,7 @@ class EspnProvider:
             return self._cache[url]
         request = urllib.request.Request(
             url,
-            headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0 RolmerBet/0.5"},
+            headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0 RolmerBet/0.6"},
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
@@ -293,4 +293,6 @@ class EspnProvider:
             source="ESPN (resultados, córners, remates y alineaciones)", notes=notes,
             lineup_confirmed=lineup_confirmed, confirmed_starters=starters,
             player_shots_on_target=player_forms,
+            source_names=["ESPN"], source_count=1, source_agreement=.75,
+            injuries_checked=False, rotation_risk="unknown",
         )

@@ -28,8 +28,8 @@ files = {
 payload = {
     "repository": "rolmerdiaz/RolmerBet",
     "version": (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip(),
-    "notes": ("Corrige el filtro que descartaba todos los mercados por notas de alineación o por "
-              "interpretar Premier League como copa, y muestra el motivo exacto de cada descarte."),
+    "notes": ("Nuevo motor conservador por familia de mercado, cruce ESPN/Sofascore, un solo "
+              "mercado principal por partido y análisis visual jerárquico sin apuestas débiles."),
     "files": files,
 }
 (ROOT / "version.json").write_text(

@@ -179,5 +179,9 @@ class FootballDataProvider:
         notes = []
         if min(home.games, away.games) < 8:
             notes.append("La muestra disponible tiene menos de ocho partidos para uno de los equipos.")
-        return MatchContext(home=home, away=away, source="Football-Data.org", notes=notes)
+        return MatchContext(
+            home=home, away=away, source="Football-Data.org", notes=notes,
+            source_names=["Football-Data.org"], source_count=1,
+            source_agreement=.75, injuries_checked=False, rotation_risk="unknown",
+        )
 

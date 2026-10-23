@@ -1,71 +1,71 @@
-# RolmerBet 0.5.1
+# RolmerBet 0.6.0
 
-Aplicación de escritorio para Windows que lee cuotas públicas de Triunfobet, las convierte a formato decimal, contrasta los mercados con forma reciente y decide si existe una combinada conservadora dentro de la cuota configurada. El análisis se muestra dentro de la aplicación: no usa correo y nunca realiza la apuesta por ti.
-
-Las cuatro imágenes de la aplicación anterior se reutilizan como cabeceras de **Inicio**, **Partidos**, **Análisis** y **Combinada**, dentro de una interfaz azul, celeste y naranja.
+Aplicación de escritorio para Windows que compara los mercados visibles de Triunfobet con evidencia deportiva independiente y decide si existe una combinada conservadora. El análisis se muestra dentro de la app: no envía correos, no inicia sesión y no realiza apuestas.
 
 ## Instalación rápida
 
-1. Descomprime toda la carpeta en Windows.
-2. Instala Python 3.11, 3.12 o 3.13. El instalador lo busca en `PATH`, el Registro de Windows, Python Install Manager y paquetes de Microsoft Store.
-3. Ejecuta `INSTALAR.bat` una sola vez.
-4. Ejecuta `EJECUTAR.bat`.
-5. Elige la fecha en la barra superior con **Hoy**, **Mañana** o escribe `AAAA-MM-DD`.
-6. Prueba primero el **Modo demostración**. Después desmarca **Usar datos de demostración** para utilizar datos reales.
+1. Descomprime la carpeta completa.
+2. Instala Python 3.11, 3.12 o 3.13.
+3. Ejecuta `INSTALAR.bat` una vez.
+4. Abre `EJECUTAR.bat`.
+5. Elige **Hoy**, **Mañana** o escribe una fecha `AAAA-MM-DD`.
+6. Desactiva **Usar datos de demostración** para analizar la cartelera real.
 
-## Pasar al modo real
+El navegador trabaja oculto cuando la opción *Headless* está activa.
 
-1. Desactiva **Modo demostración** desde la barra superior o desde **Configuración**.
-2. Mantén **Navegador oculto (headless)** activado.
-3. Pulsa **Guardar** y después **Analizar fecha**. Ya no necesitas registrarte ni pegar un token estadístico.
+## Separación estricta de fuentes
 
-Las cuotas provienen exclusivamente de los textos visibles en Triunfobet. La fuente pública de ESPN se usa solo para resultados, forma, córners, remates y alineaciones; nunca aporta ni reemplaza una cuota.
+- **Triunfobet:** partidos disponibles, torneo, horario, nombre exacto del mercado, selección y cuota. La app no sustituye esos precios por los de otra casa.
+- **ESPN y Sofascore:** forma, goles, rendimiento local/visitante, córners, remates y alineaciones. Cuando ambas fuentes responden, la app calcula su nivel de acuerdo.
+- **Football-Data.org:** tercera fuente opcional si el usuario ya posee un token. No es necesaria para ejecutar la aplicación.
 
-## Qué hace el análisis
+Si una fuente falla, el análisis continúa con las demás, pero pierde calidad. Los mercados sensibles pueden quedar descartados por evidencia insuficiente.
 
-- Lee eventos previos visibles y descarta partidos en vivo.
-- Filtra los partidos por la fecha seleccionada. Triunfobet debe tener cuotas publicadas para ese día.
-- Conserva la cuota exactamente como se ve en Triunfobet. Si está en formato americano la convierte a decimal; si ya es decimal, evita convertirla dos veces.
-- Evalúa 1x2, doble oportunidad, totales de goles del partido y de cada equipo. En **Total de goles** recorre las líneas alternativas visibles 0.5, 1.5, 2.5, 3.5 y 4.5, sin limitarse a la línea principal.
-- Evalúa córners totales y por equipo cuando Triunfobet publica el mercado y existen al menos cinco partidos recientes con ese dato para ambos equipos.
-- Evalúa remates a puerta totales del partido y de cada equipo. Los remates a puerta de un jugador solo pueden entrar si aparece como titular confirmado y hay al menos tres apariciones recientes con estadísticas.
-- Aplica una penalización por incertidumbre, muestra calidad de datos y compara la estimación prudente con la probabilidad implícita de la casa.
-- Busca una sola combinación de partidos distintos entre cuota 3.00 y 4.00.
-- Si para alcanzar esa cuota tendría que bajar los filtros, muestra **NO APOSTAR**.
+## Perfil Conservador v2
 
-## Limitaciones honestas de esta versión
+Cada mercado tiene su propio filtro:
 
-- El lector reproduce el recorrido de la web: cierra el aviso promocional, abre **Apuestas deportivas**, entra en **Fútbol**, elige **Partidos de hoy**, **Partidos de mañana** o **Próximos partidos**. Después abre cada liga configurada por separado, comprueba que quedó desplegada y lee sus partidos antes de continuar.
-- El recolector abre el detalle de cada partido de la fecha elegida y lee los nombres y precios visibles de los mercados compatibles. No asigna nombres ni cuotas inventadas a mercados desconocidos.
-- La fuente estadística no cubre de forma uniforme todas las copas y selecciones. Esos partidos pueden aparecer en **Partidos**, pero quedan descartados si no hay estadísticas verificables.
-- A primera hora normalmente no existen titulares confirmados; por eso los remates a puerta de jugadores se muestran pero se descartan hasta que la alineación oficial esté disponible.
-- Una cuota “conservadora” no es segura. No persigas pérdidas y usa un monto que puedas perder.
+| Familia | Probabilidad prudente mínima | Muestra mínima |
+|---|---:|---:|
+| Doble oportunidad | 72% | 8 partidos |
+| Victoria 1X2 | 64% | 8 partidos |
+| Más de 1.5 / menos de 4.5 goles | 74% | 8 partidos |
+| Otras líneas de goles | 68% | 8 partidos |
+| Goles de equipo | 70% | 8 partidos |
+| Córners | 68% | 8 partidos con ese dato |
+| Remates al arco del equipo | 68% | 8 partidos con ese dato |
+| Remates al arco de jugador | 65% | 5 apariciones y titular confirmado |
 
-## Programación diaria
+La probabilidad prudente es el límite inferior de un intervalo que considera tamaño de muestra, cantidad y acuerdo de fuentes, rotación y tipo de competición. La probabilidad implícita de la cuota sirve como control de precio, no como un segundo castigo automático.
 
-En Windows, pulsa **Programar 8:00 A. M.**. Se crea una tarea local que abre la aplicación y ejecuta el análisis según la hora de tu computador. Comprueba que Windows tenga la zona horaria de Venezuela y que el equipo esté encendido.
+## Orden visual
+
+La pestaña **Análisis** no muestra todas las cuotas juntas:
+
+1. **Lo mejor:** un máximo de un mercado principal por partido.
+2. **Alternativas:** selecciones cercanas al filtro, separadas de las recomendaciones.
+3. **Descartadas:** ocultas por defecto y disponibles solo para diagnóstico.
+
+Una selección con probabilidad prudente inferior a 55% nunca aparece en la vista principal.
+
+## Combinada
+
+- Cuota total objetivo de 3.00 a 4.00.
+- De 2 a 5 partidos, preferiblemente 3 o 4.
+- Un solo mercado por partido.
+- Probabilidad prudente conjunta mínima de 28%.
+- No se añaden cuotas diminutas ni patas débiles para completar el objetivo.
+- Si no existe una combinación válida, la app muestra **NO APOSTAR**.
 
 ## Actualizaciones
 
-La aplicación consulta el repositorio público `rolmerdiaz/RolmerBet` al iniciar. Cuando existe una versión nueva, el botón superior cambia a **ACTUALIZAR A X.X.X**. La descarga verifica cada archivo mediante SHA-256 antes de cerrar la aplicación e instalarlo.
-
-El actualizador nunca reemplaza `data/`, `diagnostics/`, `.venv/` ni `.git/`. Por eso conserva la configuración y el historial. Si la copia falla, restaura los archivos anteriores y deja el detalle en `diagnostics/update.log`.
-
-## Archivos importantes
-
-| Ruta | Función |
-|---|---|
-| `RolmerBet.pyw` | Lanzador sin consola |
-| `RolmerBetUpdater.pyw` | Instala una actualización y permite restaurar los archivos anteriores |
-| `version.json` | Versión disponible y firmas SHA-256 de los archivos públicos |
-| `rolmerbet/scrapers/triunfobet.py` | Lectura headless y parser de cuotas |
-| `rolmerbet/providers/espn.py` | Forma, resultados, córners, remates y titulares |
-| `rolmerbet/engine.py` | Probabilidades, filtros y construcción de combinada |
-| `rolmerbet/storage.py` | Historial local SQLite |
-| `assets/` | Imágenes reutilizadas de la app anterior |
-| `diagnostics/` | Evidencias de errores del navegador |
-| `data/` | Configuración e historial creados al usar la app |
+RolmerBet consulta el repositorio público `rolmerdiaz/RolmerBet` al iniciar. Cuando existe una versión nueva, el botón superior permite descargarla, verificar cada archivo mediante SHA-256 e instalarla conservando `data/`, `diagnostics/` y el historial.
 
 ## Pruebas
 
-Ejecuta `PROBAR.bat`. Las pruebas cubren conversión de cuotas, interpretación del DOM, descarte de eventos en vivo, regla de no forzar una combinada y persistencia del historial.
+Ejecuta `PROBAR.bat`. La versión 0.6 incluye pruebas de filtros específicos por mercado, jerarquía visual, selección de un mercado por partido, requisito de titularidad y compatibilidad con historiales anteriores.
+
+## Aviso
+
+“Conservadora” describe los filtros; no garantiza resultados. No persigas pérdidas y utiliza únicamente dinero que puedas perder.
+

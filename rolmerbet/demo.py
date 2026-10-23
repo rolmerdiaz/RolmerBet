@@ -68,7 +68,10 @@ def demo_matches(target_date: date | None = None) -> tuple[list[Match], dict[str
             country="DEMO", home=home, away=away, source_url="demo://local", quotes=qlist,
         ))
         context = MatchContext(
-            hf, af, "Datos de demostración", ["Estos equipos y estadísticas son ficticios."]
+            hf, af, "Fuente Demo A + Fuente Demo B",
+            ["Estos equipos y estadísticas son ficticios."],
+            source_names=["Fuente Demo A", "Fuente Demo B"], source_count=2,
+            source_agreement=.91, injuries_checked=True, rotation_risk="low",
         )
         if match_id == "d1":
             context.lineup_confirmed = True

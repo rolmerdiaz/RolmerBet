@@ -1,13 +1,20 @@
-ROLMERBET 0.5.1
-=================
+ROLMERBET 0.6.0
+================
 
-1. Descomprime toda la carpeta.
-2. Ejecuta INSTALAR.bat una sola vez.
-3. Abre EJECUTAR.bat.
-4. Elige HOY, MAÑANA o escribe una fecha.
-5. Pulsa ANALIZAR para probar la demostracion.
-6. Lee README.md antes de desactivar el modo demo.
+1. Ejecuta INSTALAR.bat una sola vez.
+2. Abre EJECUTAR.bat.
+3. Elige Hoy, Mañana o una fecha AAAA-MM-DD.
+4. Desactiva el modo demostración para analizar Triunfobet.
 
-La aplicacion no envia correos, no inicia sesion y no realiza apuestas.
-Si los filtros no justifican una combinada entre cuota 3.00 y 4.00,
-mostrara NO APOSTAR.
+NOVEDADES
+---------
+- Filtros diferentes para 1X2, doble oportunidad, goles, córners y remates.
+- ESPN y Sofascore se cruzan para medir calidad y acuerdo de datos.
+- Solo aparece un mercado principal por partido.
+- Las apuestas débiles quedan ocultas en Descartadas.
+- Los remates de jugador exigen titular confirmado y cinco apariciones útiles.
+- La combinada no se fuerza para llegar a cuota 3.00–4.00.
+
+Triunfobet es la única fuente de partidos, mercados y cuotas.
+La aplicación analiza, pero no inicia sesión ni confirma apuestas.
+
