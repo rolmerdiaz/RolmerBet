@@ -24,8 +24,8 @@ DEFAULTS = {
     "min_quality": 75,
     "min_edge": 0.02,
     "min_total_probability": 0.22,
-    "football_data_token": "",
-    "recent_games": 10,
+    "football_data_token": "",  # Conservado para no romper configuraciones antiguas; ya no es necesario.
+    "recent_games": 8,
     "theme": "dark",
     "check_updates": True,
     "competitions": [

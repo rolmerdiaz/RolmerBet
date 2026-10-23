@@ -7,7 +7,7 @@ from typing import Callable, Protocol
 
 from .domain import Combo, Evaluation, Match, MatchContext, Quote
 from .odds import implied_probability, multiply_odds
-from .providers.football_data import StatsUnavailable
+from .providers.football_data import StatsUnavailable, normalize, similarity
 
 
 class ContextProvider(Protocol):
@@ -39,6 +39,22 @@ def _corner_probability(line: float, mean: float, over: bool) -> float:
     return (1.0 - below) if over else below
 
 
+def _over_under_probability(line: float, mean: float, selection: str) -> float | None:
+    over = "mas" in normalize(selection)
+    under = "menos" in normalize(selection)
+    if not over and not under:
+        return None
+    return _corner_probability(line, mean, over)
+
+
+def _player_name(market: str, selection: str) -> str:
+    if "—" in selection:
+        return selection.rsplit("—", 1)[-1].strip()
+    if " - " in market:
+        return market.rsplit(" - ", 1)[-1].strip()
+    return ""
+
+
 def _expected_goals(context: MatchContext) -> tuple[float, float]:
     h, a = context.home, context.away
     home = 0.38 * h.home_gf + 0.34 * a.away_ga + 0.14 * h.gf + 0.14 * a.ga
@@ -51,19 +67,82 @@ def _expected_goals(context: MatchContext) -> tuple[float, float]:
 def _probability(match: Match, quote: Quote, context: MatchContext) -> tuple[float | None, str]:
     market = quote.market.casefold()
     selection = quote.selection.casefold()
+    market_norm = normalize(quote.market)
+    selection_norm = normalize(quote.selection)
+    home_norm, away_norm = normalize(match.home), normalize(match.away)
+
     if "esquina" in market or "corner" in market:
-        if min(context.home.corner_games, context.away.corner_games) < 8 or quote.line is None:
-            return None, "Faltan al menos ocho partidos de córners por equipo."
-        expected = ((context.home.corners_for + context.away.corners_against) / 2.0
-                    + (context.away.corners_for + context.home.corners_against) / 2.0)
-        if "más" in selection or "mas" in selection:
-            return _corner_probability(quote.line, expected, True), f"Media ajustada de córners: {expected:.1f}."
-        if "menos" in selection:
-            return _corner_probability(quote.line, expected, False), f"Media ajustada de córners: {expected:.1f}."
-        return None, "El tipo de selección de córners no pudo interpretarse."
+        if min(context.home.corner_games, context.away.corner_games) < 5 or quote.line is None:
+            return None, "Faltan al menos cinco partidos con datos de córners por equipo."
+        home_expected = (context.home.corners_for + context.away.corners_against) / 2.0
+        away_expected = (context.away.corners_for + context.home.corners_against) / 2.0
+        if home_norm in market_norm:
+            expected, label = home_expected, match.home
+        elif away_norm in market_norm:
+            expected, label = away_expected, match.away
+        else:
+            expected, label = home_expected + away_expected, "el partido"
+        p = _over_under_probability(quote.line, expected, quote.selection)
+        if p is None:
+            return None, "El tipo de selección de córners no pudo interpretarse."
+        return p, f"Media ajustada de córners para {label}: {expected:.1f}."
+
+    if "remates a puerta" in market_norm:
+        if quote.line is None:
+            return None, "Triunfobet no mostró una línea interpretable de remates a puerta."
+        if "total" in market_norm:
+            if min(context.home.shot_games, context.away.shot_games) < 5:
+                return None, "Faltan cinco partidos con remates a puerta por equipo."
+            home_expected = (context.home.shots_on_target_for + context.away.shots_on_target_against) / 2.0
+            away_expected = (context.away.shots_on_target_for + context.home.shots_on_target_against) / 2.0
+            if home_norm in market_norm:
+                expected, label = home_expected, match.home
+            elif away_norm in market_norm:
+                expected, label = away_expected, match.away
+            else:
+                expected, label = home_expected + away_expected, "el partido"
+            p = _over_under_probability(quote.line, expected, quote.selection)
+            if p is None:
+                return None, "El tipo de total de remates a puerta no pudo interpretarse."
+            return p, f"Media ajustada de remates a puerta para {label}: {expected:.1f}."
+
+        player = _player_name(quote.market, quote.selection)
+        player_key = normalize(player)
+        if not player:
+            return None, "No se pudo identificar al jugador de este mercado."
+        if not context.lineup_confirmed:
+            return None, "El remate del jugador se descarta hasta que la alineación sea oficial."
+        if not any(similarity(player_key, starter) >= 0.82 for starter in context.confirmed_starters):
+            return None, f"{player} no figura como titular confirmado."
+        form = context.player_shots_on_target.get(player_key)
+        if not form or form.games < 3:
+            return None, f"Faltan al menos tres apariciones recientes con datos para {player}."
+        p = _over_under_probability(quote.line, form.shots_on_target, quote.selection)
+        if p is None:
+            return None, "El tipo de remate a puerta del jugador no pudo interpretarse."
+        return p, (f"{player}: {form.shots_on_target:.2f} remates a puerta por partido "
+                   f"en {form.games} apariciones; titular confirmado.")
 
     home_mean, away_mean = _expected_goals(context)
     cells = _score_matrix(home_mean, away_mean)
+    if "doble oportunidad" in market_norm:
+        home_win = sum(prob for h, a, prob in cells if h > a)
+        draw = sum(prob for h, a, prob in cells if h == a)
+        away_win = sum(prob for h, a, prob in cells if a > h)
+        has_home = home_norm in selection_norm
+        has_away = away_norm in selection_norm
+        has_draw = "empate" in selection_norm
+        if has_home and has_draw:
+            p = home_win + draw
+        elif has_away and has_draw:
+            p = away_win + draw
+        elif has_home and has_away:
+            p = home_win + away_win
+        else:
+            return None, "La doble oportunidad no coincide con los equipos."
+        return p, (f"Doble oportunidad calculada con goles esperados: "
+                   f"{match.home} {home_mean:.2f}, {match.away} {away_mean:.2f}.")
+
     if market == "1x2":
         if selection == match.home.casefold():
             p = sum(prob for h, a, prob in cells if h > a)
@@ -77,13 +156,23 @@ def _probability(match: Match, quote: Quote, context: MatchContext) -> tuple[flo
 
     if "gol" in market and quote.line is not None:
         threshold = quote.line
+        if home_norm in market_norm:
+            value = lambda h, a: h
+            label = match.home
+        elif away_norm in market_norm:
+            value = lambda h, a: a
+            label = match.away
+        else:
+            value = lambda h, a: h + a
+            label = "el partido"
         if "más" in selection or "mas" in selection:
-            p = sum(prob for h, a, prob in cells if h + a > threshold)
+            p = sum(prob for h, a, prob in cells if value(h, a) > threshold)
         elif "menos" in selection:
-            p = sum(prob for h, a, prob in cells if h + a < threshold)
+            p = sum(prob for h, a, prob in cells if value(h, a) < threshold)
         else:
             return None, "El tipo de total de goles no pudo interpretarse."
-        return p, f"Goles esperados totales: {home_mean + away_mean:.2f}."
+        expected = home_mean if label == match.home else (away_mean if label == match.away else home_mean + away_mean)
+        return p, f"Goles esperados para {label}: {expected:.2f}."
     return None, "Mercado todavía no compatible con el motor automático."
 
 
@@ -126,9 +215,13 @@ def evaluate_match(match: Match, context: MatchContext, config: dict) -> list[Ev
             decision = "Cumple los filtros." if accepted else "No supera todos los filtros conservadores."
             reason = (f"{note} Forma: {match.home} {context.home.ppg:.2f} puntos/partido; "
                       f"{match.away} {context.away.ppg:.2f}. {decision}")
-            main_risk = ("Variación propia de los goles y posibles cambios de alineación."
-                         if "gol" in quote.market.casefold() or quote.market == "1x2"
-                         else "El volumen de córners depende del desarrollo del partido.")
+            quote_norm = normalize(quote.market)
+            if "remates a puerta" in quote_norm:
+                main_risk = "Los remates dependen de los minutos jugados, la función táctica y el rival."
+            elif "esquina" in quote_norm or "corner" in quote_norm:
+                main_risk = "El volumen de córners depende del desarrollo del partido."
+            else:
+                main_risk = "Variación propia de los goles y posibles cambios de alineación."
         risk = "Bajo" if adjusted >= .78 else ("Medio" if adjusted >= .68 else "Alto")
         route = (f"Fútbol → {match.country or 'Competición'} → {match.competition} → {match.name} "
                  f"→ {quote.market} → {quote.selection}")

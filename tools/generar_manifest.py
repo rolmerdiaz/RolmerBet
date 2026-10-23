@@ -28,7 +28,8 @@ files = {
 payload = {
     "repository": "rolmerdiaz/RolmerBet",
     "version": (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip(),
-    "notes": "Actualización automática y lectura secuencial de ligas de Triunfobet.",
+    "notes": ("Añade doble oportunidad, líneas alternativas de goles, córners y remates a puerta; "
+              "también elimina la necesidad del token estadístico."),
     "files": files,
 }
 (ROOT / "version.json").write_text(

@@ -37,6 +37,35 @@ CARD_SCRIPT = r"""
 """
 
 
+DETAIL_BOX_SCRIPT = r"""
+(box) => {
+  const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+  const name = clean(box.querySelector('div[class*="EventDetailsMarketName-sc"]')?.innerText
+    || box.querySelector('[class*="EventDetailsMarketName"]')?.innerText);
+  const lineText = clean(box.querySelector('[class*="EventDetailsSliderThumbLabel"]')?.innerText
+    || box.querySelector('[class*="SpecialOddBoxValue"]')?.innerText
+    || box.querySelector('input[type="range"]')?.getAttribute('aria-valuetext'));
+  const buttons = Array.from(box.querySelectorAll('button')).map((button) => ({
+    value: clean(button.querySelector('[class*="OddValue"]')?.innerText),
+    label: clean(button.querySelector('[class*="OddLabel"]')?.innerText)
+  })).filter(item => item.value && item.label);
+  Array.from(box.querySelectorAll('div[class*="ChildMarketBoxContainer"]')).forEach((row) => {
+    const player = clean(row.getAttribute('title')
+      || row.querySelector('[class*="ChildMarketCompetitorName"]')?.innerText
+      || row.querySelector('span')?.innerText);
+    const line = clean(row.querySelector('[class*="ChildMarketLine"]')?.innerText)
+      || (clean(row.innerText).match(/\b\d+(?:[.,]\d+)?\b/) || [])[0] || '';
+    const value = clean(row.querySelector('button [class*="OddValue"]')?.innerText
+      || row.querySelector('button')?.innerText);
+    if (player && line && value && !buttons.some(x => x.value === value && x.label.includes(player))) {
+      buttons.push({value, label: `Más de ${line.replace(',', '.')} — ${player}`});
+    }
+  });
+  return {name, lineText, buttons};
+}
+"""
+
+
 COMPETITION_LABELS = {
     "Premier League": (("Premier League", "Inglaterra"),),
     "LaLiga": (("LaLiga", "España"),),
@@ -75,6 +104,33 @@ def _kickoff_iso(date_text: str, now: datetime | None = None) -> str:
     return candidate.isoformat(timespec="minutes")
 
 
+def _clean_market_name(value: str) -> str:
+    return re.sub(r"\s+(?:BB|PA)(?:\s+(?:BB|PA))*\s*$", "", value.strip(), flags=re.I)
+
+
+def _detail_market_supported(name: str, home: str, away: str) -> bool:
+    clean = unicodedata.normalize("NFKD", _clean_market_name(name).casefold())
+    clean = "".join(ch for ch in clean if not unicodedata.combining(ch))
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if "1a mitad" in clean or "2a mitad" in clean:
+        return False
+    exact = {
+        "doble oportunidad", "total de goles", "total tiros de esquina",
+        "remates a puerta", "remates a puerta totales",
+    }
+    if clean in exact:
+        return True
+    team_names = [home, away]
+    return any(
+        re.sub(r"\s+", " ", unicodedata.normalize("NFKD", team.casefold())
+               .encode("ascii", "ignore").decode()).strip() in clean
+        and any(marker in clean for marker in (
+            "total de goles", "total tiros de esquina", "remates a puerta totales"
+        ))
+        for team in team_names
+    )
+
+
 def parse_cards(payload: list[dict], source_url: str, captured_at: str | None = None) -> list[Match]:
     captured_at = captured_at or datetime.now().isoformat(timespec="seconds")
     matches: list[Match] = []
@@ -90,9 +146,13 @@ def parse_cards(payload: list[dict], source_url: str, captured_at: str | None = 
             continue
         seen.add(match_id)
         quotes: list[Quote] = []
-        for market in card.get("markets", []):
+        market_rows = list(card.get("markets", [])) + list(card.get("detailMarkets", []))
+        quote_keys: set[tuple[str, str, str, float | None]] = set()
+        for market in market_rows:
             index = int(market.get("index", 99))
-            market_name = "1x2" if index == 0 else ("Total de goles" if index == 1 else f"Mercado {index + 1}")
+            market_name = _clean_market_name(str(market.get("name", "")))
+            if not market_name:
+                market_name = "1x2" if index == 0 else ("Total de goles" if index == 1 else f"Mercado {index + 1}")
             line_text = str(market.get("lineText", "")).replace(",", ".")
             try:
                 line = float(line_text) if line_text else None
@@ -102,7 +162,9 @@ def parse_cards(payload: list[dict], source_url: str, captured_at: str | None = 
                 original = str(item.get("value", "")).strip()
                 selection = str(item.get("label", "")).strip()
                 item_line = line
-                if item_line is None and market_name == "Total de goles":
+                if item_line is None and any(marker in market_name.casefold() for marker in (
+                    "total", "remates a puerta", "tiros de esquina", "corner"
+                )):
                     embedded_line = re.search(r"(\d+(?:[.,]\d+)?)", selection)
                     if embedded_line:
                         item_line = float(embedded_line.group(1).replace(",", "."))
@@ -110,7 +172,10 @@ def parse_cards(payload: list[dict], source_url: str, captured_at: str | None = 
                     decimal = visible_to_decimal(original)
                 except ValueError:
                     continue
-                quotes.append(Quote(market_name, selection, original, decimal, item_line, captured_at))
+                key = (market_name.casefold(), selection.casefold(), original, item_line)
+                if key not in quote_keys:
+                    quote_keys.add(key)
+                    quotes.append(Quote(market_name, selection, original, decimal, item_line, captured_at))
         if quotes:
             matches.append(Match(
                 match_id=match_id, date_text=str(card.get("date", "")),
@@ -206,6 +271,110 @@ class TriunfoBetCollector:
                     break
                 page.wait_for_timeout(250)
         return False
+
+    @staticmethod
+    def _read_detail_box(box) -> dict:
+        return box.evaluate(DETAIL_BOX_SCRIPT)
+
+    def _collect_detail_markets(self, page, sportsbook, card, home: str, away: str,
+                                progress: Callable[[str], None]) -> list[dict]:
+        """Abre el detalle de un evento y conserva solo mercados con modelo estadístico."""
+        toggle = card.locator('button[class*="EventBoxDetailsButton"]').first
+        if not toggle.count():
+            return []
+        try:
+            toggle.click(timeout=5000)
+            page.wait_for_timeout(450)
+            try:
+                tab = sportsbook.get_by_text("Todas", exact=True).last
+                if tab.count() and tab.is_visible():
+                    tab.click(timeout=3000)
+                    page.wait_for_timeout(250)
+            except Exception:
+                pass
+
+            boxes = sportsbook.locator('div[class*="EventDetailsMarketBoxContainer"]')
+            output: list[dict] = []
+            for index in range(boxes.count()):
+                box = boxes.nth(index)
+                try:
+                    name = _clean_market_name(box.locator(
+                        'div[class*="EventDetailsMarketName-sc"], [class*="EventDetailsMarketName"]'
+                    ).first.inner_text(timeout=1200))
+                except Exception:
+                    continue
+                if not _detail_market_supported(name, home, away):
+                    continue
+                try:
+                    if not box.locator('[class*="OddValue"]').count():
+                        box.locator('div[class*="EventDetailsMarketHeader"]').first.click(timeout=2500)
+                        page.wait_for_timeout(180)
+                except Exception:
+                    try:
+                        box.click(timeout=2000)
+                        page.wait_for_timeout(180)
+                    except Exception:
+                        continue
+
+                # El mercado de jugadores usa dos pestañas, una por equipo.
+                if _clean_market_name(name).casefold() == "remates a puerta":
+                    player_buttons: list[dict] = []
+                    for team in (home, away):
+                        try:
+                            team_tab = box.get_by_role("button", name=re.compile(rf"^{re.escape(team)}$", re.I)).first
+                            if team_tab.count() and team_tab.is_visible():
+                                team_tab.click(timeout=2000)
+                                page.wait_for_timeout(160)
+                            more = box.get_by_role("button", name=re.compile("Más jugadores", re.I)).first
+                            if more.count() and more.is_visible():
+                                more.click(timeout=1500)
+                                page.wait_for_timeout(120)
+                        except Exception:
+                            pass
+                        payload = self._read_detail_box(box)
+                        player_buttons.extend(payload.get("buttons", []))
+                    output.append({"name": name, "lineText": "", "buttons": player_buttons})
+                    continue
+
+                payload = self._read_detail_box(box)
+                payload["name"] = name
+                if payload.get("buttons"):
+                    output.append(payload)
+
+                # La tarjeta principal muestra solo una línea. Para el total de goles
+                # recorremos el control real de Triunfobet y añadimos 0.5, 1.5, 2.5,
+                # 3.5 y 4.5 cuando la casa efectivamente publica precio.
+                if name.casefold() == "total de goles":
+                    slider = box.locator('input[type="range"]').first
+                    if slider.count():
+                        try:
+                            slider.focus()
+                            slider.press("Home")
+                            for _ in range(14):
+                                page.wait_for_timeout(55)
+                                variant = self._read_detail_box(box)
+                                variant["name"] = name
+                                line_match = re.search(r"(\d+(?:[.,]\d+)?)", str(variant.get("lineText", "")))
+                                if line_match:
+                                    value = float(line_match.group(1).replace(",", "."))
+                                    if value > 4.5:
+                                        break
+                                    if value in {0.5, 1.5, 2.5, 3.5, 4.5} and variant.get("buttons"):
+                                        output.append(variant)
+                                slider.press("ArrowRight")
+                        except Exception:
+                            pass
+            return output
+        except Exception as exc:
+            progress(f"Detalle de {home} vs {away}: no se pudo leer ({exc}).")
+            return []
+        finally:
+            try:
+                if toggle.count():
+                    toggle.click(timeout=2500)
+                    page.wait_for_timeout(120)
+            except Exception:
+                pass
 
     def collect(self, progress: Callable[[str], None] | None = None,
                 target_date: date | None = None,
@@ -344,10 +513,31 @@ class TriunfoBetCollector:
                     page.wait_for_timeout(1200)
                     container = header.locator("xpath=..")
                     cards = container.evaluate(CARD_SCRIPT)
+                    card_nodes = container.locator('div[class*="EventBoxContainerBase"]')
+                    detail_count = 0
+                    for card_index, card_payload in enumerate(cards):
+                        try:
+                            card_day = datetime.fromisoformat(
+                                _kickoff_iso(str(card_payload.get("date", "")))
+                            ).date()
+                        except ValueError:
+                            continue
+                        if card_day != target_date or card_payload.get("live") or card_index >= card_nodes.count():
+                            continue
+                        teams = card_payload.get("teams") or []
+                        if len(teams) != 2:
+                            continue
+                        progress(f"{clean_name}: leyendo mercados de {teams[0]} vs {teams[1]}…")
+                        details = self._collect_detail_markets(
+                            page, sportsbook, card_nodes.nth(card_index),
+                            str(teams[0]), str(teams[1]), progress,
+                        )
+                        card_payload["detailMarkets"] = details
+                        detail_count += len(details)
                     payload.extend(cards)
                     league_log.append({"league": clean_name, "opened": True,
-                                       "cards": len(cards)})
-                    progress(f"{clean_name}: {len(cards)} partido(s) leído(s).")
+                                       "cards": len(cards), "detail_markets": detail_count})
+                    progress(f"{clean_name}: {len(cards)} partido(s) y {detail_count} mercado(s) detallado(s).")
                     try:
                         header.click(timeout=4000)
                         page.wait_for_timeout(200)

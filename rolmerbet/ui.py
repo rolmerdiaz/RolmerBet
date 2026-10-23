@@ -15,7 +15,7 @@ from .demo import DemoProvider, demo_matches
 from .domain import Combo, Evaluation, Match
 from .engine import analyze_matches, build_combo
 from .odds import fmt_decimal, fmt_percent
-from .providers.football_data import FootballDataProvider
+from .providers.espn import EspnProvider
 from .scheduler import install_daily
 from .scrapers.triunfobet import TriunfoBetCollector
 from .storage import Database
@@ -169,7 +169,7 @@ class RolmerBetApp:
         body.pack(fill="both", expand=True, padx=24, pady=10)
         cards = [
             ("1", "Leer Triunfobet", "El navegador trabaja en modo oculto y conserva el nombre exacto de los mercados."),
-            ("2", "Evaluar", "Compara probabilidades, forma reciente, goles y córners cuando existen datos suficientes."),
+            ("2", "Evaluar", "Compara 1X2, doble oportunidad, goles, córners y remates a puerta con datos suficientes."),
             ("3", "Decidir", "Si alcanzar cuota 3–4 exige bajar los filtros, la aplicación indica NO APOSTAR."),
         ]
         for number, title, text in cards:
@@ -295,10 +295,12 @@ class RolmerBetApp:
             self.setting_vars[key] = var
             ttk.Entry(self.settings_tab, textvariable=var, width=18).grid(row=row, column=col + 1, sticky="w", padx=8)
         row = 5
-        tk.Label(self.settings_tab, text="Token Football-Data.org", bg=COLORS["bg"], fg=COLORS["muted"]).grid(row=row, column=0, sticky="w", padx=20, pady=8)
-        self.token_var = tk.StringVar(value=str(self.config.get("football_data_token", "")))
-        ttk.Entry(self.settings_tab, textvariable=self.token_var, width=42, show="•").grid(row=row, column=1, columnspan=2, sticky="w", padx=8)
-        tk.Label(self.settings_tab, text="Se usa solo para forma y resultados; las cuotas salen de Triunfobet.",
+        tk.Label(self.settings_tab, text="Fuente estadística", bg=COLORS["bg"], fg=COLORS["muted"]).grid(row=row, column=0, sticky="w", padx=20, pady=8)
+        tk.Label(self.settings_tab, text="ESPN pública · no requiere token",
+                 bg=COLORS["panel"], fg=COLORS["good"], font=("Segoe UI", 10, "bold"),
+                 padx=10, pady=5).grid(row=row, column=1, columnspan=2, sticky="w", padx=8)
+        tk.Label(self.settings_tab,
+                 text="Aporta forma, goles, córners, remates a puerta y alineaciones; las cuotas siguen saliendo solo de Triunfobet.",
                  bg=COLORS["bg"], fg=COLORS["muted"], font=("Segoe UI", 9)).grid(row=row + 1, column=0, columnspan=4, sticky="w", padx=20)
         buttons = tk.Frame(self.settings_tab, bg=COLORS["bg"])
         buttons.grid(row=row + 2, column=0, columnspan=4, sticky="w", padx=16, pady=20)
@@ -307,8 +309,8 @@ class RolmerBetApp:
         self._button(buttons, "BUSCAR ACTUALIZACIÓN", lambda: self.check_updates(manual=True),
                      "good").pack(side="left", padx=4)
         tk.Label(self.settings_tab,
-                 text=("Modo real: instala Playwright, desactiva demostración y agrega el token estadístico. "
-                       "Si faltan estadísticas, la app mostrará los mercados pero no recomendará apostar."),
+                 text=("Modo real: instala Playwright y desactiva demostración. No necesitas token. "
+                       "Si faltan estadísticas o titulares confirmados, la app mostrará el mercado pero no lo recomendará."),
                  bg=COLORS["panel"], fg=COLORS["white"], wraplength=850, justify="left",
                  padx=14, pady=12).grid(row=row + 3, column=0, columnspan=4, sticky="we", padx=20)
 
@@ -345,8 +347,7 @@ class RolmerBetApp:
                                if datetime.fromisoformat(m.kickoff_iso).date() == target_date
                                and any(c in normalize(m.competition) or normalize(m.competition) in c
                                        for c in enabled)]
-                    provider = FootballDataProvider(self.config.get("football_data_token", ""),
-                                                    int(self.config.get("recent_games", 10)))
+                    provider = EspnProvider(int(self.config.get("recent_games", 8)))
                     mode = "REAL"
                 evaluations = analyze_matches(matches, provider, self.config, progress)
                 combo = build_combo(evaluations, self.config)
@@ -489,7 +490,6 @@ class RolmerBetApp:
             self.config["demo_mode"] = bool(self.demo_var.get())
             self.config["headless"] = bool(self.headless_var.get())
             self.config["check_updates"] = bool(self.updates_var.get())
-            self.config["football_data_token"] = self.token_var.get().strip()
             self.config["target_odds_min"] = float(self.setting_vars["target_odds_min"].get())
             self.config["target_odds_max"] = float(self.setting_vars["target_odds_max"].get())
             self.config["max_legs"] = int(float(self.setting_vars["max_legs"].get()))

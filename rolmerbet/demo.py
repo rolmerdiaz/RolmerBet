@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 
-from .domain import Match, MatchContext, Quote, TeamForm
+from .domain import Match, MatchContext, PlayerForm, Quote, TeamForm
 
 
 def _form(gf: float, ga: float, ppg: float, o15: float, o25: float,
@@ -13,6 +13,8 @@ def _form(gf: float, ga: float, ppg: float, o15: float, o25: float,
         away_gf=max(0.35, gf - 0.10), away_ga=ga + 0.10,
         over15=o15, over25=o25, btts=min(o15, 0.58), sequence=seq,
         corner_games=10, corners_for=cf, corners_against=ca,
+        shot_games=10, shots_on_target_for=max(2.2, gf * 2.4),
+        shots_on_target_against=max(2.0, ga * 2.2),
     )
 
 
@@ -23,7 +25,12 @@ def demo_matches(target_date: date | None = None) -> tuple[list[Match], dict[str
     data = [
         ("d1", "Premier League (DEMO)", "Rojos FC", "Azules United", 3,
          [("1x2", "Rojos FC", "-250", None), ("1x2", "Empate", "+380", None),
-          ("1x2", "Azules United", "+700", None), ("Total de goles", "Más de 1.5", "-280", 1.5)],
+          ("1x2", "Azules United", "+700", None),
+          ("Doble oportunidad", "Rojos FC o empate", "-450", None),
+          ("Total de goles", "Más de 1.5", "-280", 1.5),
+          ("Rojos FC total de goles", "Más de 1.5", "-125", 1.5),
+          ("Rojos FC Remates a Puerta totales", "Más de 3.5", "-220", 3.5),
+          ("Remates a Puerta", "Más de 0.5 — Mateo Demo", "-250", 0.5)],
          _form(2.05, .72, 2.35, .90, .60, 6.4, 3.8, "G G E G G G P G G E"),
          _form(.88, 1.62, .85, .70, .40, 4.2, 5.7, "P E P G P E P P G P")),
         ("d2", "LaLiga (DEMO)", "Atlético Central", "Deportivo Norte", 5,
@@ -60,9 +67,16 @@ def demo_matches(target_date: date | None = None) -> tuple[list[Match], dict[str
             kickoff_iso=kickoff.isoformat(timespec="minutes"), competition=competition,
             country="DEMO", home=home, away=away, source_url="demo://local", quotes=qlist,
         ))
-        contexts[f"{target_date.isoformat()}-{match_id}"] = MatchContext(
+        context = MatchContext(
             hf, af, "Datos de demostración", ["Estos equipos y estadísticas son ficticios."]
         )
+        if match_id == "d1":
+            context.lineup_confirmed = True
+            context.confirmed_starters = {"mateo demo"}
+            context.player_shots_on_target = {
+                "mateo demo": PlayerForm(games=8, shots_on_target=1.18)
+            }
+        contexts[f"{target_date.isoformat()}-{match_id}"] = context
     return matches, contexts
 
 

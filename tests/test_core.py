@@ -13,6 +13,7 @@ from rolmerbet.odds import american_to_decimal, multiply_odds, visible_to_decima
 from rolmerbet.scrapers.triunfobet import TriunfoBetCollector, parse_cards
 from rolmerbet.storage import Database
 from rolmerbet.providers.football_data import competition_code
+from rolmerbet.providers.espn import league_slug
 from rolmerbet.updater import UpdateError, is_newer, parse_manifest
 
 
@@ -86,6 +87,34 @@ class ScraperParserTests(unittest.TestCase):
         quotes = parse_cards(payload, "https://triunfobet.com")[0].quotes
         self.assertEqual([q.line for q in quotes], [2.5, 2.5])
 
+    def test_parses_supported_detail_markets_without_inventing_prices(self) -> None:
+        payload = [{
+            "date": "24/10 • 16:00", "comp": "Premier League • Inglaterra",
+            "teams": ["Arsenal", "Everton"], "live": False,
+            "markets": [{"index": 0, "buttons": [{"value": "-220", "label": "Arsenal"}]}],
+            "detailMarkets": [
+                {"name": "Doble oportunidad", "buttons": [
+                    {"value": "-1100", "label": "Arsenal o empate"}]},
+                {"name": "Total de goles", "lineText": "1.5", "buttons": [
+                    {"value": "-300", "label": "Más de 1.5"}]},
+                {"name": "Total Tiros De Esquina", "lineText": "8.5", "buttons": [
+                    {"value": "-125", "label": "Más de 8.5"}]},
+                {"name": "Remates a Puerta", "buttons": [
+                    {"value": "-200", "label": "Más de 0.5 — Bukayo Saka"}]},
+                {"name": "Arsenal Remates a Puerta totales", "lineText": "4.5", "buttons": [
+                    {"value": "-115", "label": "Más de 4.5"}]},
+            ],
+        }]
+        quotes = parse_cards(payload, "https://triunfobet.com")[0].quotes
+        markets = {quote.market for quote in quotes}
+        self.assertIn("Doble oportunidad", markets)
+        self.assertIn("Total Tiros De Esquina", markets)
+        self.assertIn("Remates a Puerta", markets)
+        self.assertIn("Arsenal Remates a Puerta totales", markets)
+        player = next(q for q in quotes if "Bukayo" in q.selection)
+        self.assertEqual(player.line, 0.5)
+        self.assertAlmostEqual(player.decimal, 1.5)
+
     def test_only_opens_the_configured_country_league(self) -> None:
         self.assertTrue(TriunfoBetCollector._wanted_header(
             "Bundesliga • Alemania\nPA\nBB", ["Bundesliga"]))
@@ -98,6 +127,8 @@ class ScraperParserTests(unittest.TestCase):
         self.assertEqual(competition_code("La Liga • España"), "PD")
         self.assertEqual(competition_code("UEFA Champions League"), "CL")
         self.assertIsNone(competition_code("Copa desconocida"))
+        self.assertEqual(league_slug("Premier League"), "eng.1")
+        self.assertEqual(league_slug("Coppa Italia"), "ita.coppa_italia")
 
 
 class EngineTests(unittest.TestCase):
@@ -124,6 +155,18 @@ class EngineTests(unittest.TestCase):
         matches, _contexts = demo_matches(selected)
         self.assertTrue(matches)
         self.assertTrue(all(datetime.fromisoformat(m.kickoff_iso).date() == selected for m in matches))
+
+    def test_engine_evaluates_the_new_market_families(self) -> None:
+        matches, contexts = demo_matches()
+        evaluations = analyze_matches(matches, DemoProvider(contexts), DEFAULTS)
+        by_market = {}
+        for item in evaluations:
+            by_market.setdefault(item.market, []).append(item)
+        self.assertGreater(by_market["Doble oportunidad"][0].model_probability, 0)
+        self.assertGreater(by_market["Rojos FC total de goles"][0].model_probability, 0)
+        self.assertGreater(by_market["Total Tiros De Esquina"][0].model_probability, 0)
+        self.assertGreater(by_market["Rojos FC Remates a Puerta totales"][0].model_probability, 0)
+        self.assertGreater(by_market["Remates a Puerta"][0].model_probability, 0)
 
 
 class StorageTests(unittest.TestCase):

@@ -58,6 +58,15 @@ class TeamForm:
     corner_games: int = 0
     corners_for: float = 0.0
     corners_against: float = 0.0
+    shot_games: int = 0
+    shots_on_target_for: float = 0.0
+    shots_on_target_against: float = 0.0
+
+
+@dataclass(slots=True)
+class PlayerForm:
+    games: int
+    shots_on_target: float
 
 
 @dataclass(slots=True)
@@ -66,6 +75,9 @@ class MatchContext:
     away: TeamForm
     source: str
     notes: list[str] = field(default_factory=list)
+    lineup_confirmed: bool = False
+    confirmed_starters: set[str] = field(default_factory=set)
+    player_shots_on_target: dict[str, PlayerForm] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
