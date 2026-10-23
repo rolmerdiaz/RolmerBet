@@ -28,8 +28,9 @@ files = {
 payload = {
     "repository": "rolmerdiaz/RolmerBet",
     "version": (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip(),
-    "notes": ("Nuevo motor conservador por familia de mercado, cruce ESPN/Sofascore, verificación "
-              "obligatoria de bajas para resultados y análisis visual jerárquico sin apuestas débiles."),
+    "notes": ("Reparación de fuentes sin cambiar filtros: fechas adyacentes en ESPN/Sofascore, "
+              "rutas alternativas, forma reciente de respaldo, Football-Data solo como corroboración "
+              "y diagnóstico visible de fuentes y descartes."),
     "files": files,
 }
 (ROOT / "version.json").write_text(
