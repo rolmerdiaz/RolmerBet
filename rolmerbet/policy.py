@@ -16,12 +16,15 @@ class MarketRule:
     min_odds: float = 1.15
     max_odds: float = 1.70
     confirmed_lineup: bool = False
+    injuries_required: bool = False
 
 
 # Un perfil conservador no puede medir todos los mercados con el mismo corte.
 RULES = {
-    "double_chance": MarketRule("double_chance", "Doble oportunidad", .72, 8, 72, 1.15, 1.62),
-    "match_winner": MarketRule("match_winner", "Ganador 1X2", .64, 8, 76, 1.20, 1.68),
+    "double_chance": MarketRule("double_chance", "Doble oportunidad", .72, 8, 72,
+                                 1.15, 1.62, injuries_required=True),
+    "match_winner": MarketRule("match_winner", "Ganador 1X2", .64, 8, 76,
+                                1.20, 1.68, injuries_required=True),
     "safe_goals": MarketRule("safe_goals", "Línea amplia de goles", .74, 8, 72, 1.15, 1.58),
     "goals": MarketRule("goals", "Total de goles", .68, 8, 74, 1.18, 1.68),
     "team_goals": MarketRule("team_goals", "Goles de equipo", .70, 8, 74, 1.18, 1.65),
