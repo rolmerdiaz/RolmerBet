@@ -7,8 +7,8 @@ from pathlib import Path
 
 from rolmerbet.config import DEFAULTS
 from rolmerbet.demo import DemoProvider, demo_matches
-from rolmerbet.domain import Combo
-from rolmerbet.engine import analyze_matches, build_combo
+from rolmerbet.domain import Combo, Match, MatchContext, TeamForm
+from rolmerbet.engine import _quality, analyze_matches, build_combo
 from rolmerbet.odds import american_to_decimal, multiply_odds, visible_to_decimal
 from rolmerbet.scrapers.triunfobet import TriunfoBetCollector, parse_cards
 from rolmerbet.storage import Database
@@ -132,6 +132,17 @@ class ScraperParserTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_regular_league_is_not_penalized_by_unrelated_notes(self) -> None:
+        form = TeamForm(
+            games=5, gf=1.4, ga=1.0, ppg=1.8,
+            home_gf=1.5, home_ga=0.9, away_gf=1.3, away_ga=1.1,
+            over15=.7, over25=.4, btts=.4, sequence="G E G P G",
+        )
+        match = Match("m1", "24/10 • 16:00", "2026-10-24T16:00",
+                      "Premier League", "Inglaterra", "Arsenal", "Everton", "https://triunfobet.com")
+        context = MatchContext(form, form, "Fuente", ["Alineaciones aún no confirmadas."])
+        self.assertGreaterEqual(_quality(match, context), DEFAULTS["min_quality"])
+
     def test_demo_produces_conservative_combo_in_target(self) -> None:
         matches, contexts = demo_matches()
         evaluations = analyze_matches(matches, DemoProvider(contexts), DEFAULTS)

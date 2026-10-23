@@ -1,27 +1,27 @@
 {
   "repository": "rolmerdiaz/RolmerBet",
-  "version": "0.5.0",
-  "notes": "Añade doble oportunidad, líneas alternativas de goles, córners y remates a puerta; también elimina la necesidad del token estadístico.",
+  "version": "0.5.1",
+  "notes": "Corrige el filtro que descartaba todos los mercados por notas de alineación o por interpretar Premier League como copa, y muestra el motivo exacto de cada descarte.",
   "files": {
     "EJECUTAR.bat": "1dae3b139f9b2d6f776d664aa68963ead31274ccb783a5ea33534eb91275a295",
     "EJECUTAR_CON_DIAGNOSTICO.bat": "55db2dffc6f41a57b4da8b90b386f966dc1ef7c3f1ab240ecac962ec8cbe536f",
     "INSTALAR.bat": "e60d2488a7c5144ff1aa1363ec1460f2e90d0b3cd37633efea1c5a1f3e1074ac",
-    "LEEME_PRIMERO.txt": "627ce51b29c4734dacd1742db30c44687e965e831e675edf7ce4e232fefc9490",
+    "LEEME_PRIMERO.txt": "62443142547b0bf4f37dc114fd4004c2e8751a07446f9832930ba3416108fba3",
     "PROBAR.bat": "d0e32ddce258f0e17fc2fab59d7aec45b8e9ae1cd997f3273ad3617991da2de9",
-    "README.md": "b66123539fdad365b4c747d56364b3ef73df7328b7c7d2a0fa6c7990e8531b1b",
+    "README.md": "aad8d4b60c3c1bf272b73dbc2378c1754a15fa8a8d974344518250719a638ca6",
     "RolmerBet.pyw": "ceb074e41eac8daead4962c9231980e5be0a3dbb37a61749130b47961d975cd0",
     "RolmerBetUpdater.pyw": "a54901dc0e450060951893efda3f11871e9cfe86eaf9149826954ee1c0aeb1a6",
-    "VERSION.txt": "a0ad50640139a524f86591157145bf1d4674ea9c065bfea21558f0f7b04430c8",
+    "VERSION.txt": "aba951626c8690ce493cbc8f018205bb468003f61fbf00fd3d3c71cebabc0177",
     "assets/analisis.png": "8bc6310228d86021c04af9683a34bf9ea593ec026e0ad5329894f832dff835ed",
     "assets/combinadas.png": "a617ab4e0dc9b5ac7425a14d0f2810128c0d5a2c24386d0735c6326164a92d38",
     "assets/partidos.png": "a3f172c7a06073d80500d3ca2e280f0af9640a9ad673e5bae0010d4a04ddebcf",
     "assets/portada.png": "7d182cbdf74eb06f6cd98cfb4dc9a00388b232e722d6d696aef7b11a3d7ab22a",
     "requirements.txt": "414a38b023e3411da10561e7fffaf7ef84fe237990d83005f6073600c54392a0",
-    "rolmerbet/__init__.py": "ee60356235ca0303458a3399d10af07cabb769603a405da86abdc8a8638eaadd",
-    "rolmerbet/config.py": "976bd0e21ef3bfe74e40ec5ad242551231f91a60fefe0474a349e83113b4f23d",
+    "rolmerbet/__init__.py": "6160512553d143484f92ccef175d7fe9f48393be51d7c0028ff5babf72e68fae",
+    "rolmerbet/config.py": "b75d4eadf9fea36565e4f8a64d76a42e2e08d3f84ac705249805846a67aeaa71",
     "rolmerbet/demo.py": "2717b2b417d092f0b0ab600522c0ef6b375a4304dde388e665bf987d44643e08",
     "rolmerbet/domain.py": "aea48ab24cc51e3780aee48b2c5a374660be40eb3aa4b966e38b68d28310c736",
-    "rolmerbet/engine.py": "0778686f2b220d31eaca67a3251b8d6a884a7e243ea877c4cbc82be22140582c",
+    "rolmerbet/engine.py": "5c6b566bdca1e89c7f05ad1cd77bff3b4fc17227bb58de297cc68cb45cab1e59",
     "rolmerbet/odds.py": "673f1156c4d49857a8728076849ee3147d1b334d67688fc01c07b72e905698f6",
     "rolmerbet/providers/__init__.py": "4acf7aac0a66912f5b8a010d9473788bc5f87d58123fcda1faa4ca56d641cd10",
     "rolmerbet/providers/espn.py": "8eb1952de359440d90d6b25661792b2ec1b9628972db020916b4886c3aea8007",
@@ -33,6 +33,6 @@
     "rolmerbet/ui.py": "ab5549a9032bff60fcf694f4ab69735d79791f661675bd88bdb409aa48945c8c",
     "rolmerbet/updater.py": "8bf1ff85a8d38f655361a8ec8f7fcacdc09d707db3ddd0ac2976d98b0214da55",
     "tools/buscar_python.ps1": "20e903efebad0c0fc2a86d8c5ce3c2b2134f6d642fddcb8c69409310d8597da7",
-    "tools/generar_manifest.py": "91c0b6b854881a2a94b696d595a066075669575204f81a3f9243ca6147576891"
+    "tools/generar_manifest.py": "dec1d940a5058d55ac234d2ac5532d7fcd79fd9a078bc588c02d9167bb595d4c"
   }
 }

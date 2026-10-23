@@ -22,12 +22,13 @@ DEFAULTS = {
     "max_legs": 5,
     "min_leg_probability": 0.68,
     "min_quality": 75,
-    "min_edge": 0.02,
+    "min_edge": 0.0,
     "min_total_probability": 0.22,
     "football_data_token": "",  # Conservado para no romper configuraciones antiguas; ya no es necesario.
     "recent_games": 8,
     "theme": "dark",
     "check_updates": True,
+    "analysis_profile_version": 2,
     "competitions": [
         "Premier League", "LaLiga", "Serie A", "Bundesliga", "Ligue 1",
         "Champions League", "Europa League", "Carabao Cup", "Coppa Italia",
@@ -48,6 +49,14 @@ def load_config() -> dict:
         loaded = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             cfg.update(loaded)
+            # La versión 0.5.0 exigía una ventaja adicional del 2 % después de
+            # aplicar la penalización de incertidumbre. Era un doble castigo y
+            # descartaba líneas conservadoras razonables. Solo se migra el valor
+            # antiguo por defecto; cualquier ajuste manual distinto se conserva.
+            if int(loaded.get("analysis_profile_version", 1)) < 2:
+                if abs(float(loaded.get("min_edge", 0.02)) - 0.02) < 1e-9:
+                    cfg["min_edge"] = 0.0
+                cfg["analysis_profile_version"] = 2
     except (OSError, ValueError):
         pass
     env_token = os.environ.get("FOOTBALL_DATA_TOKEN", "").strip()

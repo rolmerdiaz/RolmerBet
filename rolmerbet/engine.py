@@ -181,9 +181,10 @@ def _quality(match: Match, context: MatchContext) -> int:
     score = 62 + min(sample, 10) * 3
     if "DEMO" in match.competition:
         return min(92, score)
-    if context.notes:
-        score -= 5
-    if any(word in match.competition.casefold() for word in ("cup", "copa", "league")):
+    # Las notas pueden referirse a un mercado distinto. Por ejemplo, que aún no
+    # haya titulares no debe reducir la calidad de un total de goles o un 1X2.
+    # Cada mercado ya valida sus propios datos dentro de _probability().
+    if any(word in match.competition.casefold() for word in ("cup", "copa", "coppa", "carabao")):
         score -= 2
     return max(0, min(100, score))
 
@@ -206,13 +207,22 @@ def evaluate_match(match: Match, context: MatchContext, config: dict) -> list[Ev
         else:
             adjusted = max(0.0, min(0.99, model - uncertainty))
             edge = adjusted - implied
-            accepted = (
-                quality >= int(config["min_quality"])
-                and adjusted >= float(config["min_leg_probability"])
-                and edge >= float(config["min_edge"])
-                and quote.decimal >= 1.15
-            )
-            decision = "Cumple los filtros." if accepted else "No supera todos los filtros conservadores."
+            failures: list[str] = []
+            if quality < int(config["min_quality"]):
+                failures.append(f"calidad {quality} < {int(config['min_quality'])}")
+            if adjusted < float(config["min_leg_probability"]):
+                failures.append(
+                    f"probabilidad ajustada {adjusted:.1%} < {float(config['min_leg_probability']):.1%}"
+                )
+            if edge < float(config["min_edge"]):
+                failures.append(
+                    f"diferencia frente a la cuota {edge:+.1%} < {float(config['min_edge']):+.1%}"
+                )
+            if quote.decimal < 1.15:
+                failures.append(f"cuota decimal {quote.decimal:.2f} < 1.15")
+            accepted = not failures
+            decision = ("Cumple los filtros."
+                        if accepted else "Descartada por: " + "; ".join(failures) + ".")
             reason = (f"{note} Forma: {match.home} {context.home.ppg:.2f} puntos/partido; "
                       f"{match.away} {context.away.ppg:.2f}. {decision}")
             quote_norm = normalize(quote.market)

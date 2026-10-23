@@ -28,8 +28,8 @@ files = {
 payload = {
     "repository": "rolmerdiaz/RolmerBet",
     "version": (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip(),
-    "notes": ("Añade doble oportunidad, líneas alternativas de goles, córners y remates a puerta; "
-              "también elimina la necesidad del token estadístico."),
+    "notes": ("Corrige el filtro que descartaba todos los mercados por notas de alineación o por "
+              "interpretar Premier League como copa, y muestra el motivo exacto de cada descarte."),
     "files": files,
 }
 (ROOT / "version.json").write_text(

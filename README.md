@@ -1,4 +1,4 @@
-# RolmerBet 0.5.0
+# RolmerBet 0.5.1
 
 Aplicación de escritorio para Windows que lee cuotas públicas de Triunfobet, las convierte a formato decimal, contrasta los mercados con forma reciente y decide si existe una combinada conservadora dentro de la cuota configurada. El análisis se muestra dentro de la aplicación: no usa correo y nunca realiza la apuesta por ti.
 
