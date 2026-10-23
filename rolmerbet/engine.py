@@ -313,6 +313,7 @@ def evaluate_match(match: Match, context: MatchContext, config: dict) -> list[Ev
             main_risk=main_risk, market_family=family, evidence_grade=grade,
             confidence_low=low, confidence_high=high, ranking_score=score,
             presentation_tier=tier, rejection_codes=failures, sources=sources,
+            source_warnings=list(dict.fromkeys(context.notes)),
         ))
     return evaluations
 
@@ -357,6 +358,7 @@ def analyze_matches(matches: list[Match], provider: ContextProvider, config: dic
                     route=f"Fútbol → {match.competition} → {match.name} → {quote.market} → {quote.selection}",
                     main_risk="No existe información estadística suficiente.",
                     market_family=market_family(match, quote), rejection_codes=["fuente_no_disponible"],
+                    source_warnings=[str(exc)],
                 ))
     _keep_one_market_per_match(output)
     return sorted(output, key=presentation_order)
