@@ -7,13 +7,15 @@ from pathlib import Path
 
 from rolmerbet.config import DEFAULTS
 from rolmerbet.demo import DemoProvider, demo_matches
-from rolmerbet.domain import Combo, Match, MatchContext, TeamForm
-from rolmerbet.engine import _quality, analyze_matches, build_combo
+from rolmerbet.domain import Combo, Match, MatchContext, Quote, TeamForm
+from rolmerbet.engine import _quality, analyze_matches, build_combo, evaluate_match
+from rolmerbet.policy import market_family
 from rolmerbet.odds import american_to_decimal, multiply_odds, visible_to_decimal
 from rolmerbet.scrapers.triunfobet import TriunfoBetCollector, parse_cards
 from rolmerbet.storage import Database
 from rolmerbet.providers.football_data import competition_code
 from rolmerbet.providers.espn import league_slug
+from rolmerbet.providers.aggregate import MultiSourceProvider
 from rolmerbet.updater import UpdateError, is_newer, parse_manifest
 
 
@@ -140,8 +142,9 @@ class EngineTests(unittest.TestCase):
         )
         match = Match("m1", "24/10 • 16:00", "2026-10-24T16:00",
                       "Premier League", "Inglaterra", "Arsenal", "Everton", "https://triunfobet.com")
-        context = MatchContext(form, form, "Fuente", ["Alineaciones aún no confirmadas."])
-        self.assertGreaterEqual(_quality(match, context), DEFAULTS["min_quality"])
+        with_note = MatchContext(form, form, "Fuente", ["Alineaciones aún no confirmadas."])
+        without_note = MatchContext(form, form, "Fuente")
+        self.assertEqual(_quality(match, with_note), _quality(match, without_note))
 
     def test_demo_produces_conservative_combo_in_target(self) -> None:
         matches, contexts = demo_matches()
@@ -178,6 +181,64 @@ class EngineTests(unittest.TestCase):
         self.assertGreater(by_market["Total Tiros De Esquina"][0].model_probability, 0)
         self.assertGreater(by_market["Rojos FC Remates a Puerta totales"][0].model_probability, 0)
         self.assertGreater(by_market["Remates a Puerta"][0].model_probability, 0)
+
+    def test_only_one_primary_market_is_kept_per_match(self) -> None:
+        matches, contexts = demo_matches()
+        evaluations = analyze_matches(matches, DemoProvider(contexts), DEFAULTS)
+        primary = [item for item in evaluations if item.presentation_tier == "VIABLE"]
+        self.assertEqual(len(primary), len({item.match_id for item in primary}))
+
+    def test_low_probability_prices_stay_out_of_main_view(self) -> None:
+        matches, contexts = demo_matches()
+        evaluations = analyze_matches(matches, DemoProvider(contexts), DEFAULTS)
+        low = [item for item in evaluations if item.adjusted_probability < .55]
+        self.assertTrue(low)
+        self.assertTrue(all(item.presentation_tier == "DESCARTADA" for item in low))
+
+    def test_market_families_are_not_forced_through_one_threshold(self) -> None:
+        match = Match("x", "", "2026-10-24T16:00", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com", quotes=[
+                          Quote("Doble oportunidad", "Arsenal o empate", "-300", 1.3333),
+                          Quote("Total de goles", "Más de 1.5", "-250", 1.40, 1.5),
+                          Quote("Total Tiros De Esquina", "Más de 8.5", "-125", 1.80, 8.5),
+                      ])
+        self.assertEqual([market_family(match, quote) for quote in match.quotes],
+                         ["double_chance", "safe_goals", "corners"])
+
+    def test_player_shot_requires_five_games_and_confirmed_starter(self) -> None:
+        form = TeamForm(10, 1.5, 1.0, 1.8, 1.7, .9, 1.3, 1.1, .8, .5, .5, "G G E",
+                        10, 5.5, 4.5, 10, 5.0, 3.5)
+        match = Match("x", "", "2026-10-24T16:00", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com", quotes=[
+                          Quote("Remates a Puerta", "Más de 0.5 — Bukayo Saka", "-180", 1.56, .5),
+                      ])
+        context = MatchContext(form, form, "Dos fuentes", lineup_confirmed=False,
+                               source_names=["A", "B"], source_count=2, source_agreement=.9)
+        result = evaluate_match(match, context, DEFAULTS)[0]
+        self.assertFalse(result.accepted)
+        self.assertIn("sin_modelo", result.rejection_codes)
+
+    def test_multiple_sources_are_combined_and_named(self) -> None:
+        form_a = TeamForm(8, 1.5, 1.0, 1.8, 1.6, .9, 1.3, 1.1, .8, .5, .5, "G E G")
+        form_b = TeamForm(8, 1.3, 1.2, 1.6, 1.5, 1.0, 1.1, 1.3, .7, .4, .4, "E G P")
+
+        class Provider:
+            def __init__(self, name, form):
+                self.name, self.form = name, form
+
+            def context_for(self, _match):
+                return MatchContext(self.form, self.form, self.name,
+                                    source_names=[self.name], source_count=1,
+                                    source_agreement=.75)
+
+        match = Match("x", "", "2026-10-24T16:00", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com")
+        context = MultiSourceProvider([Provider("Fuente A", form_a),
+                                       Provider("Fuente B", form_b)]).context_for(match)
+        self.assertEqual(context.source_count, 2)
+        self.assertEqual(context.source_names, ["Fuente A", "Fuente B"])
+        self.assertGreater(context.source_agreement, .7)
+        self.assertAlmostEqual(context.home.gf, 1.4)
 
 
 class StorageTests(unittest.TestCase):
