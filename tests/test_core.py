@@ -240,6 +240,19 @@ class EngineTests(unittest.TestCase):
         self.assertGreater(context.source_agreement, .7)
         self.assertAlmostEqual(context.home.gf, 1.4)
 
+    def test_result_market_requires_injury_check(self) -> None:
+        form = TeamForm(10, 2.0, .7, 2.3, 2.1, .6, 1.8, .8, .9, .6, .4, "G G G")
+        rival = TeamForm(10, .8, 1.8, .7, .9, 1.6, .7, 2.0, .6, .3, .3, "P P E")
+        match = Match("x", "", "2026-10-24T16:00", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com", quotes=[
+                          Quote("Doble oportunidad", "Arsenal o empate", "-300", 1.3333),
+                      ])
+        context = MatchContext(form, rival, "A + B", source_names=["A", "B"],
+                               source_count=2, source_agreement=.9, injuries_checked=False)
+        result = evaluate_match(match, context, DEFAULTS)[0]
+        self.assertFalse(result.accepted)
+        self.assertIn("bajas_no_verificadas", result.rejection_codes)
+
 
 class StorageTests(unittest.TestCase):
     def test_round_trip_and_result(self) -> None:

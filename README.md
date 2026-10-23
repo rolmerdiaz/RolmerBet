@@ -1,4 +1,4 @@
-# RolmerBet 0.6.0
+# RolmerBet 0.6.1
 
 Aplicación de escritorio para Windows que compara los mercados visibles de Triunfobet con evidencia deportiva independiente y decide si existe una combinada conservadora. El análisis se muestra dentro de la app: no envía correos, no inicia sesión y no realiza apuestas.
 
@@ -37,6 +37,8 @@ Cada mercado tiene su propio filtro:
 | Remates al arco de jugador | 65% | 5 apariciones y titular confirmado |
 
 La probabilidad prudente es el límite inferior de un intervalo que considera tamaño de muestra, cantidad y acuerdo de fuentes, rotación y tipo de competición. La probabilidad implícita de la cuota sirve como control de precio, no como un segundo castigo automático.
+
+Las victorias y dobles oportunidades no pueden recomendarse mientras las bajas y sanciones sigan sin verificar. Si dos fuentes deportivas discrepan de forma importante, el mercado también queda fuera de la recomendación.
 
 ## Orden visual
 
