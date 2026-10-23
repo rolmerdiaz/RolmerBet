@@ -16,6 +16,7 @@ from .demo import DemoProvider, demo_matches
 from .domain import Combo, Evaluation, Match
 from .engine import analyze_matches, build_combo
 from .odds import fmt_decimal, fmt_percent
+from .reporting import diagnostic_text
 from .providers.espn import EspnProvider
 from .providers.sofascore import SofascoreProvider
 from .providers.aggregate import MultiSourceProvider
@@ -218,6 +219,19 @@ class RolmerBetApp:
                                     ("DESCARTADAS", "OUT", "bad")):
             self._button(controls, label, lambda value=scope: self._set_analysis_scope(value),
                          color, padx=9, pady=3).pack(side="right", padx=3)
+        diagnostic = tk.Frame(self.analysis_tab, bg=COLORS["panel"],
+                              highlightbackground=COLORS["border"], highlightthickness=1)
+        diagnostic.pack(fill="x", padx=12, pady=(0, 8))
+        self.analysis_diagnostic_title = tk.StringVar(value="Diagnóstico de fuentes: sin ejecutar")
+        self.analysis_diagnostic_detail = tk.StringVar(
+            value="Aquí se indicará qué fuentes respondieron y por qué se descartaron mercados."
+        )
+        tk.Label(diagnostic, textvariable=self.analysis_diagnostic_title,
+                 bg=COLORS["panel"], fg=COLORS["orange"],
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=12, pady=(8, 2))
+        tk.Label(diagnostic, textvariable=self.analysis_diagnostic_detail,
+                 bg=COLORS["panel"], fg=COLORS["muted"], font=("Segoe UI", 9),
+                 justify="left", wraplength=1130).pack(anchor="w", padx=12, pady=(0, 8))
         pane = tk.PanedWindow(self.analysis_tab, orient="horizontal", bg=COLORS["bg"], sashwidth=6)
         pane.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         left = tk.Frame(pane, bg=COLORS["panel"])
@@ -454,6 +468,9 @@ class RolmerBetApp:
     def _refresh_analysis(self) -> None:
         self.analysis_tree.delete(*self.analysis_tree.get_children())
         self.analysis_row_map.clear()
+        diagnostic_title, diagnostic_detail = diagnostic_text(self.evaluations)
+        self.analysis_diagnostic_title.set(diagnostic_title)
+        self.analysis_diagnostic_detail.set(diagnostic_detail)
         top = [e for e in self.evaluations if e.presentation_tier in {"COMBINADA", "VIABLE"}]
         alternatives = [e for e in self.evaluations if e.presentation_tier == "ALTERNATIVA"]
         discarded = [e for e in self.evaluations if e.presentation_tier == "DESCARTADA"]
@@ -494,6 +511,7 @@ class RolmerBetApp:
             return
         source_text = ", ".join(e.sources) if e.sources else "No identificadas"
         rejection = ", ".join(e.rejection_codes) if e.rejection_codes else "Ninguno"
+        warnings = "\n".join(f"• {item}" for item in e.source_warnings) or "Ninguno"
         text = (f"{e.competition}\n{e.match_name}\n\nMercado: {e.market}\nSelección: {e.selection}\n"
                 f"Cuota Triunfobet visible: {e.american} / decimal: {e.decimal:.2f}\n"
                 f"Probabilidad implícita: {fmt_percent(e.implied)}\n"
@@ -501,7 +519,8 @@ class RolmerBetApp:
                 f"Intervalo prudente: {fmt_percent(e.confidence_low)} – {fmt_percent(e.confidence_high)}\n"
                 f"Evidencia: {e.evidence_grade} · {e.quality}/100\n"
                 f"Nivel visual: {e.presentation_tier}\nFuentes: {source_text}\n"
-                f"Filtros pendientes: {rejection}\n\nRazón\n{e.reason}\n\nRiesgo principal\n"
+                f"Filtros pendientes: {rejection}\n\nAvisos de fuentes\n{warnings}\n\n"
+                f"Razón\n{e.reason}\n\nRiesgo principal\n"
                 f"{e.main_risk}\n\nRuta\n{e.route}")
         self.analysis_detail.delete("1.0", "end")
         self.analysis_detail.insert("1.0", text)
