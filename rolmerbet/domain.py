@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import MISSING, asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -78,6 +78,11 @@ class MatchContext:
     lineup_confirmed: bool = False
     confirmed_starters: set[str] = field(default_factory=set)
     player_shots_on_target: dict[str, PlayerForm] = field(default_factory=dict)
+    source_names: list[str] = field(default_factory=list)
+    source_count: int = 1
+    source_agreement: float = 0.75
+    injuries_checked: bool = False
+    rotation_risk: str = "unknown"
 
 
 @dataclass(slots=True)
@@ -99,13 +104,32 @@ class Evaluation:
     risk: str
     route: str
     main_risk: str
+    market_family: str = "unknown"
+    evidence_grade: str = "Insuficiente"
+    confidence_low: float = 0.0
+    confidence_high: float = 0.0
+    ranking_score: float = 0.0
+    presentation_tier: str = "DESCARTADA"
+    rejection_codes: list[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Evaluation":
-        return cls(**{name: data[name] for name in cls.__dataclass_fields__})
+        # Los historiales 0.5.x no contienen los campos de evidencia de 0.6.
+        # Usar los valores por defecto mantiene esos registros legibles sin
+        # hacerlos pasar por análisis nuevos.
+        values: dict[str, Any] = {}
+        for name, definition in cls.__dataclass_fields__.items():
+            if name in data:
+                values[name] = data[name]
+            elif definition.default_factory is not MISSING:
+                values[name] = definition.default_factory()
+            elif definition.default is not MISSING:
+                values[name] = definition.default
+        return cls(**values)
 
 
 @dataclass(slots=True)
