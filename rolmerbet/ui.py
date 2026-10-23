@@ -4,6 +4,7 @@ import queue
 import threading
 import tkinter as tk
 import webbrowser
+from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -16,6 +17,9 @@ from .domain import Combo, Evaluation, Match
 from .engine import analyze_matches, build_combo
 from .odds import fmt_decimal, fmt_percent
 from .providers.espn import EspnProvider
+from .providers.sofascore import SofascoreProvider
+from .providers.aggregate import MultiSourceProvider
+from .providers.football_data import FootballDataProvider
 from .scheduler import install_daily
 from .scrapers.triunfobet import TriunfoBetCollector
 from .storage import Database
@@ -50,6 +54,8 @@ class RolmerBetApp:
         self.busy = False
         self.available_update: UpdateInfo | None = None
         self.images: dict[str, ImageTk.PhotoImage] = {}
+        self.analysis_scope = tk.StringVar(value="TOP")
+        self.analysis_row_map: dict[str, Evaluation] = {}
         self._setup_styles()
         self._build()
         self.root.after(150, self._poll)
@@ -201,21 +207,32 @@ class RolmerBetApp:
 
     def _analysis_page(self) -> None:
         self._banner(self.analysis_tab, "analisis.png", "COMPARACIÓN DE MERCADOS",
-                     "Probabilidad implícita, estimación prudente, calidad de datos y decisión.")
+                     "Primero lo que vale la pena. Las opciones débiles quedan fuera de la vista principal.")
+        controls = tk.Frame(self.analysis_tab, bg=COLORS["bg"])
+        controls.pack(fill="x", padx=12, pady=(0, 8))
+        self.analysis_summary = tk.StringVar(value="Ejecuta un análisis para ordenar los mercados.")
+        tk.Label(controls, textvariable=self.analysis_summary, bg=COLORS["bg"],
+                 fg=COLORS["white"], font=("Segoe UI", 10, "bold")).pack(side="left")
+        for label, scope, color in (("LO MEJOR", "TOP", "good"),
+                                    ("ALTERNATIVAS", "ALT", "warn"),
+                                    ("DESCARTADAS", "OUT", "bad")):
+            self._button(controls, label, lambda value=scope: self._set_analysis_scope(value),
+                         color, padx=9, pady=3).pack(side="right", padx=3)
         pane = tk.PanedWindow(self.analysis_tab, orient="horizontal", bg=COLORS["bg"], sashwidth=6)
         pane.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         left = tk.Frame(pane, bg=COLORS["panel"])
         right = tk.Frame(pane, bg=COLORS["panel"])
         pane.add(left, minsize=650)
         pane.add(right, minsize=340)
-        cols = ("partido", "mercado", "cuota", "implícita", "ajustada", "calidad", "decisión")
+        cols = ("nivel", "partido", "mercado", "cuota", "prudente", "evidencia", "riesgo")
         self.analysis_tree = ttk.Treeview(left, columns=cols, show="headings")
-        widths = (215, 170, 62, 68, 68, 60, 80)
+        widths = (88, 205, 190, 62, 75, 72, 62)
         for col, width in zip(cols, widths):
             self.analysis_tree.heading(col, text=col.capitalize())
             self.analysis_tree.column(col, width=width, anchor="w")
         self.analysis_tree.pack(fill="both", expand=True)
         self.analysis_tree.tag_configure("yes", foreground=COLORS["good"])
+        self.analysis_tree.tag_configure("alt", foreground=COLORS["warn"])
         self.analysis_tree.tag_configure("no", foreground=COLORS["muted"])
         self.analysis_tree.bind("<<TreeviewSelect>>", self._show_evaluation)
         tk.Label(right, text="Detalle", bg=COLORS["panel"], fg=COLORS["orange"],
@@ -283,8 +300,7 @@ class RolmerBetApp:
                                                         sticky="w", padx=20, pady=6)
         fields = [
             ("Cuota mínima", "target_odds_min"), ("Cuota máxima", "target_odds_max"),
-            ("Máx. selecciones", "max_legs"), ("Prob. mínima por selección", "min_leg_probability"),
-            ("Calidad mínima", "min_quality"), ("Ventaja mínima", "min_edge"),
+            ("Máx. selecciones", "max_legs"),
         ]
         self.setting_vars: dict[str, tk.StringVar] = {}
         for i, (label, key) in enumerate(fields):
@@ -294,13 +310,19 @@ class RolmerBetApp:
             var = tk.StringVar(value=str(self.config.get(key, "")))
             self.setting_vars[key] = var
             ttk.Entry(self.settings_tab, textvariable=var, width=18).grid(row=row, column=col + 1, sticky="w", padx=8)
-        row = 5
+        row = 4
+        tk.Label(self.settings_tab, text="Perfil de análisis", bg=COLORS["bg"],
+                 fg=COLORS["muted"]).grid(row=row, column=0, sticky="w", padx=20, pady=8)
+        tk.Label(self.settings_tab, text="Conservador v2 · filtros específicos por mercado",
+                 bg=COLORS["panel"], fg=COLORS["orange"], font=("Segoe UI", 10, "bold"),
+                 padx=10, pady=5).grid(row=row, column=1, columnspan=3, sticky="w", padx=8)
+        row += 1
         tk.Label(self.settings_tab, text="Fuente estadística", bg=COLORS["bg"], fg=COLORS["muted"]).grid(row=row, column=0, sticky="w", padx=20, pady=8)
-        tk.Label(self.settings_tab, text="ESPN pública · no requiere token",
+        tk.Label(self.settings_tab, text="ESPN + Sofascore · cruce automático",
                  bg=COLORS["panel"], fg=COLORS["good"], font=("Segoe UI", 10, "bold"),
                  padx=10, pady=5).grid(row=row, column=1, columnspan=2, sticky="w", padx=8)
         tk.Label(self.settings_tab,
-                 text="Aporta forma, goles, córners, remates a puerta y alineaciones; las cuotas siguen saliendo solo de Triunfobet.",
+                 text="Triunfobet aporta partidos, mercados y cuotas. Las fuentes deportivas solo aportan evidencia y nunca sustituyen precios.",
                  bg=COLORS["bg"], fg=COLORS["muted"], font=("Segoe UI", 9)).grid(row=row + 1, column=0, columnspan=4, sticky="w", padx=20)
         buttons = tk.Frame(self.settings_tab, bg=COLORS["bg"])
         buttons.grid(row=row + 2, column=0, columnspan=4, sticky="w", padx=16, pady=20)
@@ -327,6 +349,14 @@ class RolmerBetApp:
         self.busy = True
         self.progress.start(12)
         self.status.set("Iniciando análisis…")
+        # No mezclar una ejecución nueva con resultados cargados de la base.
+        # El historial permanece intacto en su pestaña.
+        self.matches = []
+        self.evaluations = []
+        self.combo = Combo([], 1.0, 1.0, 0.0, "VACÍA", "Análisis en curso.")
+        self._refresh_matches()
+        self._refresh_analysis()
+        self._refresh_combo()
 
         def progress(message: str) -> None:
             self.queue.put(("progress", message))
@@ -347,7 +377,12 @@ class RolmerBetApp:
                                if datetime.fromisoformat(m.kickoff_iso).date() == target_date
                                and any(c in normalize(m.competition) or normalize(m.competition) in c
                                        for c in enabled)]
-                    provider = EspnProvider(int(self.config.get("recent_games", 8)))
+                    recent = int(self.config.get("recent_games", 8))
+                    providers: list[object] = [EspnProvider(recent), SofascoreProvider(recent)]
+                    token = str(self.config.get("football_data_token", "")).strip()
+                    if token:
+                        providers.append(FootballDataProvider(token, recent))
+                    provider = MultiSourceProvider(providers)
                     mode = "REAL"
                 evaluations = analyze_matches(matches, provider, self.config, progress)
                 combo = build_combo(evaluations, self.config)
@@ -376,7 +411,7 @@ class RolmerBetApp:
                 elif kind == "error":
                     self.busy = False
                     self.progress.stop()
-                    self.status.set("Análisis detenido.")
+                    self.status.set("Análisis detenido; no se muestran resultados anteriores como actuales.")
                     messagebox.showerror("No se pudo completar", payload)
                 elif kind == "update_available":
                     self.available_update = payload
@@ -418,24 +453,55 @@ class RolmerBetApp:
 
     def _refresh_analysis(self) -> None:
         self.analysis_tree.delete(*self.analysis_tree.get_children())
-        for index, e in enumerate(self.evaluations):
-            decision = "INCLUIR" if e.accepted else "DESCARTAR"
-            self.analysis_tree.insert("", "end", iid=str(index), tags=("yes" if e.accepted else "no",),
-                                      values=(e.match_name, f"{e.market}: {e.selection}", fmt_decimal(e.decimal),
-                                              fmt_percent(e.implied), fmt_percent(e.adjusted_probability),
-                                              e.quality, decision))
+        self.analysis_row_map.clear()
+        top = [e for e in self.evaluations if e.presentation_tier in {"COMBINADA", "VIABLE"}]
+        alternatives = [e for e in self.evaluations if e.presentation_tier == "ALTERNATIVA"]
+        discarded = [e for e in self.evaluations if e.presentation_tier == "DESCARTADA"]
+        if self.analysis_scope.get() == "TOP":
+            limit = int(self.config.get("max_visible_singles", 5)) + len(self.combo.selections)
+            rows = top[:max(5, limit)]
+        elif self.analysis_scope.get() == "ALT":
+            rows = alternatives
+        else:
+            rows = discarded
+        self.analysis_summary.set(
+            f"{len(top)} selecciones viables · {len(alternatives)} alternativas · "
+            f"{len(discarded)} descartadas (ocultas por defecto)"
+        )
+        for index, e in enumerate(rows):
+            iid = f"row-{index}"
+            self.analysis_row_map[iid] = e
+            tag = "yes" if e.presentation_tier in {"COMBINADA", "VIABLE"} else (
+                "alt" if e.presentation_tier == "ALTERNATIVA" else "no")
+            self.analysis_tree.insert(
+                "", "end", iid=iid, tags=(tag,),
+                values=(e.presentation_tier, e.match_name,
+                        f"{e.market}: {e.selection}", fmt_decimal(e.decimal),
+                        fmt_percent(e.adjusted_probability),
+                        f"{e.evidence_grade} · {e.quality}", e.risk),
+            )
+
+    def _set_analysis_scope(self, scope: str) -> None:
+        self.analysis_scope.set(scope)
+        self._refresh_analysis()
 
     def _show_evaluation(self, _event=None) -> None:
         selected = self.analysis_tree.selection()
         if not selected:
             return
-        e = self.evaluations[int(selected[0])]
+        e = self.analysis_row_map.get(selected[0])
+        if e is None:
+            return
+        source_text = ", ".join(e.sources) if e.sources else "No identificadas"
+        rejection = ", ".join(e.rejection_codes) if e.rejection_codes else "Ninguno"
         text = (f"{e.competition}\n{e.match_name}\n\nMercado: {e.market}\nSelección: {e.selection}\n"
                 f"Cuota Triunfobet visible: {e.american} / decimal: {e.decimal:.2f}\n"
                 f"Probabilidad implícita: {fmt_percent(e.implied)}\n"
                 f"Probabilidad del modelo: {fmt_percent(e.model_probability)}\n"
-                f"Probabilidad prudente: {fmt_percent(e.adjusted_probability)}\n"
-                f"Calidad de datos: {e.quality}/100\n\nRazón\n{e.reason}\n\nRiesgo principal\n"
+                f"Intervalo prudente: {fmt_percent(e.confidence_low)} – {fmt_percent(e.confidence_high)}\n"
+                f"Evidencia: {e.evidence_grade} · {e.quality}/100\n"
+                f"Nivel visual: {e.presentation_tier}\nFuentes: {source_text}\n"
+                f"Filtros pendientes: {rejection}\n\nRazón\n{e.reason}\n\nRiesgo principal\n"
                 f"{e.main_risk}\n\nRuta\n{e.route}")
         self.analysis_detail.delete("1.0", "end")
         self.analysis_detail.insert("1.0", text)
@@ -493,9 +559,6 @@ class RolmerBetApp:
             self.config["target_odds_min"] = float(self.setting_vars["target_odds_min"].get())
             self.config["target_odds_max"] = float(self.setting_vars["target_odds_max"].get())
             self.config["max_legs"] = int(float(self.setting_vars["max_legs"].get()))
-            self.config["min_leg_probability"] = float(self.setting_vars["min_leg_probability"].get())
-            self.config["min_quality"] = int(float(self.setting_vars["min_quality"].get()))
-            self.config["min_edge"] = float(self.setting_vars["min_edge"].get())
             if self.config["target_odds_max"] <= self.config["target_odds_min"]:
                 raise ValueError("La cuota máxima debe ser mayor que la mínima.")
             save_config(self.config)
