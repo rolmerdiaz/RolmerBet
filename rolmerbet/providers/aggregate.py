@@ -6,25 +6,32 @@ from ..domain import Match, MatchContext, PlayerForm, TeamForm
 from .football_data import StatsUnavailable, normalize
 
 
-_AVERAGED_FIELDS = {
+_CORE_AVERAGED_FIELDS = {
     "gf", "ga", "ppg", "home_gf", "home_ga", "away_gf", "away_ga",
-    "over15", "over25", "btts", "corners_for", "corners_against",
-    "shots_on_target_for", "shots_on_target_against",
+    "over15", "over25", "btts",
 }
 
 
 def _combine_forms(forms: list[TeamForm]) -> TeamForm:
-    def average(name: str) -> float:
-        values = [float(getattr(item, name)) for item in forms]
+    def average(name: str, contributors: list[TeamForm] | None = None) -> float:
+        values = [float(getattr(item, name)) for item in (contributors or forms)]
         return sum(values) / len(values)
 
     data = {}
     for definition in fields(TeamForm):
         name = definition.name
-        if name in _AVERAGED_FIELDS:
+        if name in _CORE_AVERAGED_FIELDS:
             data[name] = average(name)
-        elif name in {"games", "corner_games", "shot_games"}:
+        elif name == "games":
             data[name] = min(int(getattr(item, name)) for item in forms)
+        elif name in {"corners_for", "corners_against", "corner_games"}:
+            contributors = [item for item in forms if item.corner_games > 0]
+            data[name] = (min(item.corner_games for item in contributors) if name == "corner_games"
+                          else average(name, contributors)) if contributors else 0
+        elif name in {"shots_on_target_for", "shots_on_target_against", "shot_games"}:
+            contributors = [item for item in forms if item.shot_games > 0]
+            data[name] = (min(item.shot_games for item in contributors) if name == "shot_games"
+                          else average(name, contributors)) if contributors else 0
         elif name == "sequence":
             data[name] = forms[0].sequence
     return TeamForm(**data)
@@ -38,8 +45,15 @@ def _agreement(contexts: list[MatchContext]) -> float:
               "corners_for": 8.0, "shots_on_target_for": 7.0}
     for side in ("home", "away"):
         for name, scale in scales.items():
-            values = [float(getattr(getattr(item, side), name)) for item in contexts]
-            if name in {"corners_for", "shots_on_target_for"} and not any(values):
+            available = contexts
+            if name == "corners_for":
+                available = [item for item in contexts
+                             if getattr(item, side).corner_games > 0]
+            elif name == "shots_on_target_for":
+                available = [item for item in contexts
+                             if getattr(item, side).shot_games > 0]
+            values = [float(getattr(getattr(item, side), name)) for item in available]
+            if len(values) < 2:
                 continue
             differences.append(min(1.0, (max(values) - min(values)) / scale))
     return max(.35, min(.98, 1.0 - (sum(differences) / len(differences) if differences else .25)))
@@ -89,6 +103,13 @@ class MultiSourceProvider:
             for name in candidates:
                 if name and name not in names:
                     names.append(name)
+        non_fallback = [name for name in names if normalize(name) != "football data org"]
+        if not non_fallback:
+            detail = " · ".join(failures) or "ESPN y Sofascore no aportaron contexto utilizable"
+            raise StatsUnavailable(
+                "Football-Data respondió, pero no puede ser la única base del análisis. "
+                f"Se requiere ESPN o Sofascore. {detail}"
+            )
         notes = [note for context in contexts for note in context.notes]
         if failures:
             notes.append("Fuentes sin respuesta: " + " · ".join(failures))
