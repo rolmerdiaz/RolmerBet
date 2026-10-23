@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+data/rolmerbet.db
+data/config.json
+diagnostics/*
+!diagnostics/.gitkeep
+.venv/
+.update_backup/
+

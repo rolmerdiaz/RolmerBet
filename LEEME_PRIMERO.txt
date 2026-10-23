@@ -1,0 +1,13 @@
+ROLMERBET 0.4.0
+=================
+
+1. Descomprime toda la carpeta.
+2. Ejecuta INSTALAR.bat una sola vez.
+3. Abre EJECUTAR.bat.
+4. Elige HOY, MAÑANA o escribe una fecha.
+5. Pulsa ANALIZAR para probar la demostracion.
+6. Lee README.md antes de desactivar el modo demo.
+
+La aplicacion no envia correos, no inicia sesion y no realiza apuestas.
+Si los filtros no justifican una combinada entre cuota 3.00 y 4.00,
+mostrara NO APOSTAR.
