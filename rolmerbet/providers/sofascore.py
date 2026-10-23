@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..domain import Match, MatchContext, PlayerForm, TeamForm
 from .football_data import StatsUnavailable, normalize, similarity
 
 
-API = "https://www.sofascore.com/api/v1"
+API_BASES = (
+    "https://www.sofascore.com/api/v1",
+    "https://api.sofascore.com/api/v1",
+)
 
 
 def _number(value, default: float = 0.0) -> float:
@@ -27,21 +30,28 @@ class SofascoreProvider:
         self._cache: dict[str, dict] = {}
 
     def _get(self, path: str) -> dict:
-        url = API + path
-        if url in self._cache:
-            return self._cache[url]
-        request = urllib.request.Request(
-            url, headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0 RolmerBet/0.6"},
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise StatsUnavailable(f"Sofascore respondió HTTP {exc.code}") from exc
-        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            raise StatsUnavailable(f"No se pudo leer Sofascore: {exc}") from exc
-        self._cache[url] = data
-        return data
+        if path in self._cache:
+            return self._cache[path]
+        errors: list[str] = []
+        for base in API_BASES:
+            url = base + path
+            request = urllib.request.Request(url, headers={
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
+                "Referer": "https://www.sofascore.com/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 Chrome/124 Safari/537.36 RolmerBet/0.6.2",
+            })
+            try:
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                self._cache[path] = data
+                return data
+            except urllib.error.HTTPError as exc:
+                errors.append(f"{base}: HTTP {exc.code}")
+            except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+                errors.append(f"{base}: {exc}")
+        raise StatsUnavailable("No se pudo leer Sofascore en sus dos rutas: " + " | ".join(errors))
 
     @staticmethod
     def _date_for(match: Match) -> datetime:
@@ -51,17 +61,29 @@ class SofascoreProvider:
             return datetime.now()
 
     def _resolve(self, match: Match) -> dict:
-        day = self._date_for(match).date().isoformat()
-        payload = self._get(f"/sport/football/scheduled-events/{day}")
+        target = self._date_for(match)
+        events: dict[str, dict] = {}
+        errors: list[str] = []
+        for offset in (-1, 0, 1):
+            day = (target + timedelta(days=offset)).date().isoformat()
+            try:
+                payload = self._get(f"/sport/football/scheduled-events/{day}")
+            except StatsUnavailable as exc:
+                errors.append(str(exc))
+                continue
+            for event in payload.get("events", []):
+                events[str(event.get("id") or id(event))] = event
         best: tuple[float, dict] | None = None
-        for event in payload.get("events", []):
+        for event in events.values():
             home = str(event.get("homeTeam", {}).get("name", ""))
             away = str(event.get("awayTeam", {}).get("name", ""))
             score = (similarity(match.home, home) + similarity(match.away, away)) / 2.0
             if best is None or score > best[0]:
                 best = (score, event)
         if not best or best[0] < .56:
-            raise StatsUnavailable("Sofascore no pudo relacionar los equipos")
+            score = f"; mejor coincidencia {best[0]:.0%}" if best else ""
+            failed = f"; consultas fallidas: {' | '.join(dict.fromkeys(errors))}" if errors else ""
+            raise StatsUnavailable(f"Sofascore no pudo relacionar los equipos{score}{failed}")
         return best[1]
 
     def _recent(self, team_id: int) -> list[dict]:
