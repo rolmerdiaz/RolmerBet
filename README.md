@@ -1,4 +1,4 @@
-# RolmerBet 0.6.1
+# RolmerBet 0.6.2
 
 Aplicación de escritorio para Windows que compara los mercados visibles de Triunfobet con evidencia deportiva independiente y decide si existe una combinada conservadora. El análisis se muestra dentro de la app: no envía correos, no inicia sesión y no realiza apuestas.
 
@@ -16,10 +16,10 @@ El navegador trabaja oculto cuando la opción *Headless* está activa.
 ## Separación estricta de fuentes
 
 - **Triunfobet:** partidos disponibles, torneo, horario, nombre exacto del mercado, selección y cuota. La app no sustituye esos precios por los de otra casa.
-- **ESPN y Sofascore:** forma, goles, rendimiento local/visitante, córners, remates y alineaciones. Cuando ambas fuentes responden, la app calcula su nivel de acuerdo.
-- **Football-Data.org:** tercera fuente opcional si el usuario ya posee un token. No es necesaria para ejecutar la aplicación.
+- **ESPN y Sofascore:** forma, goles, rendimiento local/visitante, córners, remates y alineaciones. La búsqueda contempla el día anterior y posterior para absorber diferencias horarias, y Sofascore dispone de dos rutas de conexión.
+- **Football-Data.org:** tercera fuente opcional de corroboración si el usuario ya posee un token. Nunca puede ser la única base de una recomendación y sus campos no disponibles no borran córners o remates aportados por otras fuentes.
 
-Si una fuente falla, el análisis continúa con las demás, pero pierde calidad. Los mercados sensibles pueden quedar descartados por evidencia insuficiente.
+Si una fuente falla, el análisis continúa con las demás, pero pierde calidad. Los mercados sensibles pueden quedar descartados por evidencia insuficiente. La pestaña **Análisis** muestra las fuentes activas, sus avisos y los bloqueos más frecuentes para que una caída externa no quede oculta.
 
 ## Perfil Conservador v2
 
@@ -65,7 +65,7 @@ RolmerBet consulta el repositorio público `rolmerdiaz/RolmerBet` al iniciar. Cu
 
 ## Pruebas
 
-Ejecuta `PROBAR.bat`. La versión 0.6 incluye pruebas de filtros específicos por mercado, jerarquía visual, selección de un mercado por partido, requisito de titularidad y compatibilidad con historiales anteriores.
+Ejecuta `PROBAR.bat`. La versión 0.6 incluye pruebas de filtros específicos por mercado, jerarquía visual, selección de un mercado por partido, requisito de titularidad, cruce de fuentes y compatibilidad con historiales anteriores.
 
 ## Aviso
 

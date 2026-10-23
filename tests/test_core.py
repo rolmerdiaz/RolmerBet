@@ -13,9 +13,10 @@ from rolmerbet.policy import market_family
 from rolmerbet.odds import american_to_decimal, multiply_odds, visible_to_decimal
 from rolmerbet.scrapers.triunfobet import TriunfoBetCollector, parse_cards
 from rolmerbet.storage import Database
-from rolmerbet.providers.football_data import competition_code
-from rolmerbet.providers.espn import league_slug
+from rolmerbet.providers.football_data import StatsUnavailable, competition_code, similarity
+from rolmerbet.providers.espn import EspnProvider, league_slug
 from rolmerbet.providers.aggregate import MultiSourceProvider
+from rolmerbet.reporting import diagnostic_report
 from rolmerbet.updater import UpdateError, is_newer, parse_manifest
 
 
@@ -132,6 +133,36 @@ class ScraperParserTests(unittest.TestCase):
         self.assertEqual(league_slug("Premier League"), "eng.1")
         self.assertEqual(league_slug("Coppa Italia"), "ita.coppa_italia")
 
+    def test_team_similarity_handles_accents_aliases_and_short_names(self) -> None:
+        self.assertGreaterEqual(similarity("Atlético de Madrid", "Atletico Madrid"), .85)
+        self.assertGreaterEqual(similarity("Paris Saint-Germain", "PSG"), .95)
+        self.assertGreaterEqual(similarity("Manchester Utd", "Manchester United"), .90)
+        self.assertLess(similarity("Arsenal", "Chelsea"), .50)
+
+    def test_espn_resolve_checks_adjacent_calendar_days(self) -> None:
+        class Provider(EspnProvider):
+            def __init__(self):
+                super().__init__()
+                self.days = []
+
+            def _get(self, slug, endpoint, params=None):
+                if endpoint == "summary":
+                    return {}
+                self.days.append(params["dates"])
+                if params["dates"] != "20261025":
+                    return {"events": []}
+                return {"events": [{"id": "1", "competitions": [{"competitors": [
+                    {"homeAway": "home", "team": {"displayName": "Arsenal"}},
+                    {"homeAway": "away", "team": {"displayName": "Everton"}},
+                ]}]}]}
+
+        match = Match("x", "", "2026-10-24T23:30", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com")
+        provider = Provider()
+        _slug, event, _summary = provider._resolve(match)
+        self.assertEqual(event["id"], "1")
+        self.assertEqual(provider.days, ["20261023", "20261024", "20261025"])
+
 
 class EngineTests(unittest.TestCase):
     def test_regular_league_is_not_penalized_by_unrelated_notes(self) -> None:
@@ -239,6 +270,52 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(context.source_names, ["Fuente A", "Fuente B"])
         self.assertGreater(context.source_agreement, .7)
         self.assertAlmostEqual(context.home.gf, 1.4)
+
+    def test_football_data_cannot_be_the_only_analysis_source(self) -> None:
+        form = TeamForm(8, 1.5, 1.0, 1.8, 1.6, .9, 1.3, 1.1, .8, .5, .5, "G E G")
+
+        class Provider:
+            def context_for(self, _match):
+                return MatchContext(form, form, "Football-Data.org",
+                                    source_names=["Football-Data.org"])
+
+        match = Match("x", "", "2026-10-24T16:00", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com")
+        with self.assertRaisesRegex(StatsUnavailable, "no puede ser la única base"):
+            MultiSourceProvider([Provider()]).context_for(match)
+
+    def test_fallback_source_does_not_erase_corner_or_shot_coverage(self) -> None:
+        fallback = TeamForm(10, 1.5, 1.0, 1.8, 1.6, .9, 1.3, 1.1, .8, .5, .5, "G E G")
+        detailed = TeamForm(9, 1.3, 1.2, 1.6, 1.5, 1.0, 1.1, 1.3, .7, .4, .4, "E G P",
+                            9, 6.2, 4.1, 8, 5.4, 3.2)
+
+        class Provider:
+            def __init__(self, name, form):
+                self.name, self.form = name, form
+
+            def context_for(self, _match):
+                return MatchContext(self.form, self.form, self.name,
+                                    source_names=[self.name])
+
+        match = Match("x", "", "2026-10-24T16:00", "Premier League", "Inglaterra",
+                      "Arsenal", "Everton", "https://triunfobet.com")
+        context = MultiSourceProvider([
+            Provider("Football-Data.org", fallback), Provider("ESPN", detailed)
+        ]).context_for(match)
+        self.assertEqual(context.home.corner_games, 9)
+        self.assertAlmostEqual(context.home.corners_for, 6.2)
+        self.assertEqual(context.home.shot_games, 8)
+        self.assertAlmostEqual(context.home.shots_on_target_for, 5.4)
+
+    def test_diagnostic_report_exposes_sources_failures_and_rejections(self) -> None:
+        matches, contexts = demo_matches()
+        evaluations = analyze_matches(matches, DemoProvider(contexts), DEFAULTS)
+        evaluations[0].source_warnings = ["Sofascore: HTTP 403"]
+        evaluations[0].rejection_codes = ["muestra_insuficiente"]
+        report = diagnostic_report(evaluations)
+        self.assertTrue(report["active_sources"])
+        self.assertIn("Sofascore: HTTP 403", report["warnings"])
+        self.assertIn(("muestra insuficiente", 1), report["reasons"])
 
     def test_result_market_requires_injury_check(self) -> None:
         form = TeamForm(10, 2.0, .7, 2.3, 2.1, .6, 1.8, .8, .9, .6, .4, "G G G")

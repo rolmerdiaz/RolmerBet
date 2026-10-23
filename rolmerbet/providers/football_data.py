@@ -59,8 +59,51 @@ def normalize(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
+_NAME_ALIASES = {
+    "psg": "paris saint germain",
+    "paris sg": "paris saint germain",
+    "inter": "internazionale",
+    "inter milan": "internazionale",
+    "internazionale milano": "internazionale",
+    "man city": "manchester city",
+    "man utd": "manchester united",
+    "man united": "manchester united",
+    "atleti": "atletico madrid",
+    "athletic bilbao": "athletic",
+    "deportivo la coruna": "la coruna",
+    "deportivo coruna": "la coruna",
+}
+
+
+def _canonical_name(value: str) -> str:
+    cleaned = normalize(value)
+    return _NAME_ALIASES.get(cleaned, cleaned)
+
+
 def similarity(a: str, b: str) -> float:
-    return difflib.SequenceMatcher(None, normalize(a), normalize(b)).ratio()
+    """Compara nombres completos, abreviados y con prefijos habituales de clubes.
+
+    El componente por tokens tolera variantes como ``Atlético de Madrid`` /
+    ``Atletico Madrid`` sin convertir una coincidencia parcial corta en certeza.
+    """
+    left, right = _canonical_name(a), _canonical_name(b)
+    if not left or not right:
+        return 0.0
+    if left == right:
+        return 1.0
+    sequence = difflib.SequenceMatcher(None, left, right).ratio()
+    ignored = {"de", "del", "la", "el", "the", "and"}
+    left_tokens = {token for token in left.split() if token not in ignored}
+    right_tokens = {token for token in right.split() if token not in ignored}
+    overlap = len(left_tokens & right_tokens)
+    if not overlap:
+        return sequence
+    coverage = overlap / min(len(left_tokens), len(right_tokens))
+    jaccard = overlap / len(left_tokens | right_tokens)
+    token_score = .65 * coverage + .35 * jaccard
+    shorter, longer = sorted((left, right), key=len)
+    containment = .90 if len(shorter) >= 5 and shorter in longer else 0.0
+    return min(1.0, max(sequence, token_score, containment))
 
 
 @dataclass(slots=True)

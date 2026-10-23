@@ -1,4 +1,4 @@
-ROLMERBET 0.6.1
+ROLMERBET 0.6.2
 ================
 
 1. Ejecuta INSTALAR.bat una sola vez.
@@ -15,6 +15,9 @@ NOVEDADES
 - Los remates de jugador exigen titular confirmado y cinco apariciones útiles.
 - La combinada no se fuerza para llegar a cuota 3.00–4.00.
 - Las victorias y dobles oportunidades exigen bajas y sanciones verificadas.
+- ESPN y Sofascore buscan también en fechas adyacentes para evitar desfases horarios.
+- Football-Data solo corrobora: nunca produce recomendaciones por sí sola.
+- Análisis muestra un diagnóstico visible de fuentes y motivos de descarte.
 
 Triunfobet es la única fuente de partidos, mercados y cuotas.
 La aplicación analiza, pero no inicia sesión ni confirma apuestas.

@@ -5,7 +5,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..domain import Match, MatchContext, PlayerForm, TeamForm
 from .football_data import StatsUnavailable, normalize, similarity
@@ -105,10 +105,20 @@ class EspnProvider:
         slug = league_slug(match.competition)
         if not slug:
             raise StatsUnavailable(f"{match.competition} no está disponible en la fuente estadística")
-        day = self._date_for(match).strftime("%Y%m%d")
-        scoreboard = self._get(slug, "scoreboard", {"dates": day, "limit": 200})
+        target = self._date_for(match)
+        events: dict[str, dict] = {}
+        errors: list[str] = []
+        for offset in (-1, 0, 1):
+            day = (target + timedelta(days=offset)).strftime("%Y%m%d")
+            try:
+                scoreboard = self._get(slug, "scoreboard", {"dates": day, "limit": 200})
+            except StatsUnavailable as exc:
+                errors.append(str(exc))
+                continue
+            for event in scoreboard.get("events", []):
+                events[str(event.get("id") or id(event))] = event
         best: tuple[float, dict] | None = None
-        for event in scoreboard.get("events", []):
+        for event in events.values():
             competitors = event.get("competitions", [{}])[0].get("competitors", [])
             home = next((x for x in competitors if x.get("homeAway") == "home"), None)
             away = next((x for x in competitors if x.get("homeAway") == "away"), None)
@@ -121,7 +131,11 @@ class EspnProvider:
             if best is None or score > best[0]:
                 best = (score, event)
         if not best or best[0] < 0.54:
-            raise StatsUnavailable("No se pudieron relacionar los equipos con la fuente estadística")
+            score = f"; mejor coincidencia {best[0]:.0%}" if best else ""
+            failed = f"; consultas fallidas: {' | '.join(dict.fromkeys(errors))}" if errors else ""
+            raise StatsUnavailable(
+                f"No se pudieron relacionar los equipos con ESPN{score}{failed}"
+            )
         event = best[1]
         summary = self._get(slug, "summary", {"event": event.get("id")})
         return slug, event, summary
@@ -131,6 +145,60 @@ class EspnProvider:
         groups = summary.get("lastFiveGames", [])
         group = next((x for x in groups if str(x.get("team", {}).get("id")) == str(team_id)), None)
         return list((group or {}).get("events", []))
+
+    @staticmethod
+    def _scoreboard_row(event: dict) -> dict | None:
+        competition = (event.get("competitions") or [{}])[0]
+        competitors = competition.get("competitors", [])
+        home = next((item for item in competitors if item.get("homeAway") == "home"), None)
+        away = next((item for item in competitors if item.get("homeAway") == "away"), None)
+        if not home or not away:
+            return None
+        completed = bool(event.get("status", {}).get("type", {}).get("completed"))
+        state = normalize(str(event.get("status", {}).get("type", {}).get("state", "")))
+        if not completed and state not in {"post", "finished"}:
+            return None
+        return {
+            "id": event.get("id"),
+            "date": event.get("date", ""),
+            "homeTeamId": str(home.get("team", {}).get("id", "")),
+            "awayTeamId": str(away.get("team", {}).get("id", "")),
+            "homeTeamScore": home.get("score"),
+            "awayTeamScore": away.get("score"),
+        }
+
+    def _league_recent_rows(self, slug: str, team_id: str, target: datetime) -> list[dict]:
+        """Recupera forma cuando el resumen de un partido futuro no trae lastFiveGames."""
+        start = (target - timedelta(days=180)).strftime("%Y%m%d")
+        end = (target - timedelta(days=1)).strftime("%Y%m%d")
+        try:
+            payload = self._get(slug, "scoreboard", {"dates": f"{start}-{end}", "limit": 500})
+        except StatsUnavailable:
+            return []
+        rows = []
+        for event in payload.get("events", []):
+            row = self._scoreboard_row(event)
+            if row and team_id in {row["homeTeamId"], row["awayTeamId"]}:
+                rows.append(row)
+        rows.sort(key=lambda item: str(item.get("date", "")), reverse=True)
+        return rows[:self.recent_games]
+
+    def _complete_recent_rows(self, summary: dict, team_id: str, slug: str,
+                              target: datetime) -> list[dict]:
+        rows = self._recent_rows(summary, team_id)
+        if len(rows) < self.recent_games:
+            rows.extend(self._league_recent_rows(slug, team_id, target))
+        unique: list[dict] = []
+        seen: set[str] = set()
+        for row in rows:
+            key = str(row.get("id") or (
+                row.get("date"), row.get("homeTeamId"), row.get("awayTeamId")
+            ))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(row)
+        return unique[:self.recent_games]
 
     @staticmethod
     def _base_form(team_id: str, rows: list[dict]) -> TeamForm:
@@ -261,8 +329,9 @@ class EspnProvider:
         home_event, away_event = self._teams(event)
         home_id = str(home_event.get("team", {}).get("id"))
         away_id = str(away_event.get("team", {}).get("id"))
-        home_rows = self._recent_rows(summary, home_id)[:self.recent_games]
-        away_rows = self._recent_rows(summary, away_id)[:self.recent_games]
+        target = self._date_for(match)
+        home_rows = self._complete_recent_rows(summary, home_id, slug, target)
+        away_rows = self._complete_recent_rows(summary, away_id, slug, target)
         home = self._base_form(home_id, home_rows)
         away = self._base_form(away_id, away_rows)
 

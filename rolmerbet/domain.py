@@ -112,6 +112,7 @@ class Evaluation:
     presentation_tier: str = "DESCARTADA"
     rejection_codes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    source_warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
